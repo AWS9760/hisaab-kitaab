@@ -28,7 +28,28 @@ public class SettingsService
         "HisaabKitaab",
         "settings.json");
 
+    /// <summary>
+    /// Documents/Hisaab Kitaab, falling back to the home folder on Linux
+    /// systems without a Documents folder.
+    /// </summary>
+    public static string DefaultDataFolder
+    {
+        get
+        {
+            var documents = Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments);
+            if (string.IsNullOrEmpty(documents))
+                documents = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
+            return Path.Combine(documents, "Hisaab Kitaab");
+        }
+    }
+
     public string FilePath { get; }
+
+    /// <summary>
+    /// Folder holding the monthly workbooks.
+    /// </summary>
+    public string DataFolder =>
+        string.IsNullOrWhiteSpace(_settings.DataFolder) ? DefaultDataFolder : _settings.DataFolder;
 
     /// <summary>
     /// Set when <see cref="Load"/> found a settings file it couldn't read.

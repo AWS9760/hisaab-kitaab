@@ -9,6 +9,11 @@ public partial class SettingsViewModel : PageViewModelBase
 {
     private readonly SettingsService _settings;
     private readonly IDialogService _dialogs;
+    private readonly ExcelService _excel;
+    private readonly TimeProvider _clock;
+
+    // A rename whose workbook update partly failed, kept so the user can retry.
+    private (int Year, string OldName, string NewName)? _pendingRename;
 
     [ObservableProperty]
     [NotifyCanExecuteChangedFor(nameof(AddMemberCommand))]
@@ -18,10 +23,21 @@ public partial class SettingsViewModel : PageViewModelBase
     [NotifyPropertyChangedFor(nameof(HasError))]
     private string? _errorMessage;
 
-    public SettingsViewModel(SettingsService settings, IDialogService dialogs)
+    // Result of pushing a rename into the Excel files.
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(HasRenameSummary))]
+    private string? _renameSummary;
+
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(HasRenameWarning))]
+    private string? _renameWarning;
+
+    public SettingsViewModel(SettingsService settings, IDialogService dialogs, ExcelService excel, TimeProvider? clock = null)
     {
         _settings = settings;
         _dialogs = dialogs;
+        _excel = excel;
+        _clock = clock ?? TimeProvider.System;
 
         foreach (var member in settings.FamilyMembers)
             Members.Add(new FamilyMemberItemViewModel(this, member.Id, member.Name));
@@ -39,6 +55,10 @@ public partial class SettingsViewModel : PageViewModelBase
 
     public bool HasError => ErrorMessage is not null;
 
+    public bool HasRenameSummary => RenameSummary is not null;
+
+    public bool HasRenameWarning => RenameWarning is not null;
+
     /// <summary>
     /// Shown when the settings file on disk was unreadable at startup.
     /// </summary>
@@ -47,6 +67,8 @@ public partial class SettingsViewModel : PageViewModelBase
     public bool HasLoadWarning => LoadWarning is not null;
 
     public string SettingsFilePath => _settings.FilePath;
+
+    public string DataFolder => _excel.DataFolder;
 
     public int MaxNameLength => SettingsService.MaxMemberNameLength;
 
@@ -79,6 +101,7 @@ public partial class SettingsViewModel : PageViewModelBase
             other.IsEditing = false;
 
         ErrorMessage = null;
+        RenameSummary = null;
         item.EditName = item.Name;
         item.IsEditing = true;
     }
@@ -105,9 +128,51 @@ public partial class SettingsViewModel : PageViewModelBase
         if (!TrySave(() => { _settings.RenameFamilyMember(item.Id, newName); return true; }, out _))
             return;
 
+        var oldName = item.Name;
         item.Name = newName;
         item.IsEditing = false;
+
+        RenameInWorkbooks(_clock.GetLocalNow().Year, oldName, newName);
     }
+
+    /// <summary>
+    /// Updates the member's name on past expenses in this year's workbooks.
+    /// Earlier years keep the name they were recorded with.
+    /// </summary>
+    private void RenameInWorkbooks(int year, string oldName, string newName)
+    {
+        RenameSummary = null;
+        RenameWarning = null;
+        _pendingRename = null;
+
+        var result = _excel.RenameFamilyMember(year, oldName, newName);
+
+        if (result.FilesFailed.Count > 0)
+        {
+            _pendingRename = (year, oldName, newName);
+            RenameWarning = $"Couldn't update {string.Join(", ", result.FilesFailed)}, so expenses there still say " +
+                            $"\"{oldName}\". The file may be open in Excel: close it and choose Retry.";
+        }
+
+        if (result.RowsUpdated > 0)
+        {
+            RenameSummary = $"Renamed {Plural(result.RowsUpdated, "expense")} in {year}'s " +
+                            $"{Plural(result.FilesUpdated.Count, "workbook")}.";
+        }
+
+        RetryRenameCommand.NotifyCanExecuteChanged();
+    }
+
+    private bool CanRetryRename() => _pendingRename is not null;
+
+    [RelayCommand(CanExecute = nameof(CanRetryRename))]
+    private void RetryRename()
+    {
+        if (_pendingRename is { } pending)
+            RenameInWorkbooks(pending.Year, pending.OldName, pending.NewName);
+    }
+
+    private static string Plural(int count, string noun) => count == 1 ? $"1 {noun}" : $"{count} {noun}s";
 
     internal void CancelRename(FamilyMemberItemViewModel item)
     {

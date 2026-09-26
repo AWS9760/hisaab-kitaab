@@ -11,4 +11,10 @@ public class AppSettings
     public int Version { get; set; } = CurrentVersion;
 
     public List<FamilyMember> FamilyMembers { get; set; } = new();
+
+    /// <summary>
+    /// Where the monthly workbooks are kept. Null means the default
+    /// (Documents/Hisaab Kitaab).
+    /// </summary>
+    public string? DataFolder { get; set; }
 }

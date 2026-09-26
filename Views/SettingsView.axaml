@@ -35,7 +35,7 @@
                 <TextBlock Text="{Binding Description}" Theme="{StaticResource BodyTextBlockStyle}" Opacity="0.75" />
             </StackPanel>
 
-            <ui:InfoBar IsOpen="{Binding HasLoadWarning}"
+            <ui:InfoBar IsOpen="{Binding HasLoadWarning}" IsVisible="{Binding HasLoadWarning}"
                         IsClosable="False"
                         Severity="Warning"
                         Title="Settings reset"
@@ -46,7 +46,7 @@
                 <StackPanel Spacing="12">
                     <StackPanel Spacing="2">
                         <TextBlock Text="Family members" Theme="{StaticResource SubtitleTextBlockStyle}" />
-                        <TextBlock Text="People you track spending for. They appear in the expense form, filters and per-member charts."
+                        <TextBlock Text="People you track spending for. They appear in the expense form, filters and per-member charts. Renaming someone also updates their expenses in this year's workbooks."
                                    TextWrapping="Wrap" Opacity="0.75" />
                     </StackPanel>
 
@@ -67,10 +67,24 @@
                         </Button>
                     </Grid>
 
-                    <ui:InfoBar IsOpen="{Binding HasError}"
+                    <ui:InfoBar IsOpen="{Binding HasError}" IsVisible="{Binding HasError}"
                                 IsClosable="False"
                                 Severity="Error"
                                 Message="{Binding ErrorMessage}" />
+
+                    <!-- Outcome of carrying a rename into this year's Excel files -->
+                    <ui:InfoBar IsOpen="{Binding HasRenameSummary}" IsVisible="{Binding HasRenameSummary}"
+                                IsClosable="False"
+                                Severity="Success"
+                                Message="{Binding RenameSummary}" />
+                    <ui:InfoBar IsOpen="{Binding HasRenameWarning}" IsVisible="{Binding HasRenameWarning}"
+                                IsClosable="False"
+                                Severity="Warning"
+                                Message="{Binding RenameWarning}">
+                        <ui:InfoBar.ActionButton>
+                            <Button Content="Retry" Command="{Binding RetryRenameCommand}" />
+                        </ui:InfoBar.ActionButton>
+                    </ui:InfoBar>
 
                     <TextBlock Text="No family members yet. Add the first one above."
                                IsVisible="{Binding !HasMembers}"
@@ -149,10 +163,16 @@
                 </StackPanel>
             </Border>
 
-            <SelectableTextBlock Opacity="0.6" FontSize="12" TextWrapping="Wrap">
-                <Run Text="Settings are saved automatically to " />
-                <Run Text="{Binding SettingsFilePath}" />
-            </SelectableTextBlock>
+            <StackPanel Spacing="4">
+                <SelectableTextBlock Opacity="0.6" FontSize="12" TextWrapping="Wrap">
+                    <Run Text="Monthly workbooks are stored in " />
+                    <Run Text="{Binding DataFolder}" />
+                </SelectableTextBlock>
+                <SelectableTextBlock Opacity="0.6" FontSize="12" TextWrapping="Wrap">
+                    <Run Text="Settings are saved automatically to " />
+                    <Run Text="{Binding SettingsFilePath}" />
+                </SelectableTextBlock>
+            </StackPanel>
         </StackPanel>
     </ScrollViewer>
 </UserControl>

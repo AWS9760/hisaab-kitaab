@@ -9,6 +9,7 @@ public partial class MainWindowViewModel : ViewModelBase
     private readonly Dictionary<AppPage, PageViewModelBase> _pages = new();
     private readonly SettingsService _settings;
     private readonly IDialogService _dialogs;
+    private readonly ExcelService _excel;
 
     [ObservableProperty]
     private PageViewModelBase _currentPage;
@@ -16,10 +17,11 @@ public partial class MainWindowViewModel : ViewModelBase
     [ObservableProperty]
     private AppPage _currentPageKey;
 
-    public MainWindowViewModel(SettingsService settings, IDialogService dialogs)
+    public MainWindowViewModel(SettingsService settings, IDialogService dialogs, ExcelService excel)
     {
         _settings = settings;
         _dialogs = dialogs;
+        _excel = excel;
 
         _currentPage = GetOrCreatePage(AppPage.Dashboard);
         _currentPageKey = AppPage.Dashboard;
@@ -43,7 +45,7 @@ public partial class MainWindowViewModel : ViewModelBase
                 AppPage.Currency => new CurrencyViewModel(),
                 AppPage.CreditCard => new CreditCardViewModel(),
                 AppPage.Zakat => new ZakatViewModel(),
-                AppPage.Settings => new SettingsViewModel(_settings, _dialogs),
+                AppPage.Settings => new SettingsViewModel(_settings, _dialogs, _excel),
                 _ => throw new ArgumentOutOfRangeException(nameof(page), page, null),
             };
             _pages[page] = vm;
