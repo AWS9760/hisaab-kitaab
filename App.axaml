@@ -22,5 +22,6 @@
         <!-- FluentAvalonia: Windows 11 style controls; follows the OS light/dark setting -->
         <sty:FluentAvaloniaTheme PreferSystemTheme="True" PreferUserAccentColor="True" />
         <StyleInclude Source="avares://Avalonia.Controls.DataGrid/Themes/Fluent.xaml" />
+        <StyleInclude Source="avares://HisaabKitaab/Styles/DataGrid.axaml" />
     </Application.Styles>
 </Application>

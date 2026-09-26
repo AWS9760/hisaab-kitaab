@@ -13,6 +13,12 @@ public class AppSettings
     public List<FamilyMember> FamilyMembers { get; set; } = new();
 
     /// <summary>
+    /// Null until first saved, so a missing list (new install, or a file from
+    /// before categories existed) can be told apart from one the user emptied.
+    /// </summary>
+    public List<Category>? Categories { get; set; }
+
+    /// <summary>
     /// Where the monthly workbooks are kept. Null means the default
     /// (Documents/Hisaab Kitaab).
     /// </summary>

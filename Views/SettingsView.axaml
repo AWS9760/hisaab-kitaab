@@ -28,6 +28,26 @@
         </Style>
     </UserControl.Styles>
 
+    <UserControl.Resources>
+        <!-- Success / warning banners after a rename is carried into this year's workbooks -->
+        <DataTemplate x:Key="RenameNoticeTemplate" x:DataType="vm:WorkbookRenameNotice">
+            <StackPanel Spacing="8">
+                <ui:InfoBar IsOpen="{Binding HasSummary}" IsVisible="{Binding HasSummary}"
+                            IsClosable="False"
+                            Severity="Success"
+                            Message="{Binding Summary}" />
+                <ui:InfoBar IsOpen="{Binding HasWarning}" IsVisible="{Binding HasWarning}"
+                            IsClosable="False"
+                            Severity="Warning"
+                            Message="{Binding Warning}">
+                    <ui:InfoBar.ActionButton>
+                        <Button Content="Retry" Command="{Binding RetryCommand}" />
+                    </ui:InfoBar.ActionButton>
+                </ui:InfoBar>
+            </StackPanel>
+        </DataTemplate>
+    </UserControl.Resources>
+
     <ScrollViewer>
         <StackPanel Margin="32,24" Spacing="16" MaxWidth="760" HorizontalAlignment="Left">
             <StackPanel Spacing="4">
@@ -73,18 +93,7 @@
                                 Message="{Binding ErrorMessage}" />
 
                     <!-- Outcome of carrying a rename into this year's Excel files -->
-                    <ui:InfoBar IsOpen="{Binding HasRenameSummary}" IsVisible="{Binding HasRenameSummary}"
-                                IsClosable="False"
-                                Severity="Success"
-                                Message="{Binding RenameSummary}" />
-                    <ui:InfoBar IsOpen="{Binding HasRenameWarning}" IsVisible="{Binding HasRenameWarning}"
-                                IsClosable="False"
-                                Severity="Warning"
-                                Message="{Binding RenameWarning}">
-                        <ui:InfoBar.ActionButton>
-                            <Button Content="Retry" Command="{Binding RetryRenameCommand}" />
-                        </ui:InfoBar.ActionButton>
-                    </ui:InfoBar>
+                    <ContentControl Content="{Binding RenameNotice}" ContentTemplate="{StaticResource RenameNoticeTemplate}" />
 
                     <TextBlock Text="No family members yet. Add the first one above."
                                IsVisible="{Binding !HasMembers}"
@@ -141,6 +150,163 @@
                                         </StackPanel>
 
                                         <!-- Rename actions -->
+                                        <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="4"
+                                                    IsVisible="{Binding IsEditing}">
+                                            <Button Classes="accent"
+                                                    Command="{Binding CommitEditCommand}"
+                                                    ToolTip.Tip="Save name"
+                                                    AutomationProperties.Name="Save name">
+                                                <ui:SymbolIcon Symbol="Accept" FontSize="16" />
+                                            </Button>
+                                            <Button Command="{Binding CancelEditCommand}"
+                                                    ToolTip.Tip="Cancel"
+                                                    AutomationProperties.Name="Cancel rename">
+                                                <ui:SymbolIcon Symbol="Dismiss" FontSize="16" />
+                                            </Button>
+                                        </StackPanel>
+                                    </Grid>
+                                </Border>
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+                </StackPanel>
+            </Border>
+
+            <!-- Categories -->
+            <Border Classes="card" DataContext="{Binding Categories}" x:DataType="vm:CategorySettingsViewModel">
+                <StackPanel Spacing="12">
+                    <StackPanel Spacing="2">
+                        <TextBlock Text="Categories" Theme="{StaticResource SubtitleTextBlockStyle}" />
+                        <TextBlock Text="What you spend on. Click an icon to change its emoji or colour. Renaming a category also updates this year's workbooks."
+                                   TextWrapping="Wrap" Opacity="0.75" />
+                    </StackPanel>
+
+                    <Grid ColumnDefinitions="*,Auto" Margin="0,4,0,0">
+                        <TextBox Text="{Binding NewCategoryName}"
+                                 Watermark="Category, e.g. Groceries"
+                                 MaxLength="{x:Static svc:SettingsService.MaxCategoryNameLength}">
+                            <TextBox.KeyBindings>
+                                <KeyBinding Gesture="Enter" Command="{Binding AddCategoryCommand}" />
+                            </TextBox.KeyBindings>
+                        </TextBox>
+                        <Button Grid.Column="1" Margin="8,0,0,0" Classes="accent"
+                                Command="{Binding AddCategoryCommand}">
+                            <StackPanel Orientation="Horizontal" Spacing="6">
+                                <ui:SymbolIcon Symbol="Add" FontSize="16" />
+                                <TextBlock Text="Add category" />
+                            </StackPanel>
+                        </Button>
+                    </Grid>
+
+                    <ui:InfoBar IsOpen="{Binding HasError}" IsVisible="{Binding HasError}"
+                                IsClosable="False"
+                                Severity="Error"
+                                Message="{Binding ErrorMessage}" />
+
+                    <ContentControl Content="{Binding RenameNotice}" ContentTemplate="{StaticResource RenameNoticeTemplate}" />
+
+                    <TextBlock Text="No categories. Add one above."
+                               IsVisible="{Binding !HasItems}"
+                               Opacity="0.6" Margin="0,4" />
+
+                    <ItemsControl ItemsSource="{Binding Items}" IsVisible="{Binding HasItems}">
+                        <ItemsControl.ItemsPanel>
+                            <ItemsPanelTemplate>
+                                <StackPanel Spacing="2" />
+                            </ItemsPanelTemplate>
+                        </ItemsControl.ItemsPanel>
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate x:DataType="vm:CategoryItemViewModel">
+                                <Border Classes="memberRow">
+                                    <Grid ColumnDefinitions="Auto,*,Auto" MinHeight="36">
+                                        <!-- Icon: click to pick an emoji and colour -->
+                                        <Button Theme="{StaticResource TransparentButton}" Padding="0"
+                                                ToolTip.Tip="Change icon and colour"
+                                                AutomationProperties.Name="Change icon and colour">
+                                            <Border Width="32" Height="32" CornerRadius="16"
+                                                    Background="{Binding Color, Converter={x:Static views:AppConverters.HexToTint}}"
+                                                    BorderBrush="{Binding Color, Converter={x:Static views:AppConverters.HexToBrush}}"
+                                                    BorderThickness="1.5">
+                                                <TextBlock Text="{Binding Icon}" FontSize="15"
+                                                           HorizontalAlignment="Center" VerticalAlignment="Center" />
+                                            </Border>
+                                            <Button.Flyout>
+                                                <Flyout Placement="BottomEdgeAlignedLeft">
+                                                    <StackPanel Width="312" Spacing="8">
+                                                        <TextBlock Text="Icon" FontWeight="SemiBold" />
+                                                        <ItemsControl x:Name="IconList"
+                                                                      ItemsSource="{x:Static vm:CategoryItemViewModel.IconChoices}">
+                                                            <ItemsControl.ItemsPanel>
+                                                                <ItemsPanelTemplate>
+                                                                    <WrapPanel />
+                                                                </ItemsPanelTemplate>
+                                                            </ItemsControl.ItemsPanel>
+                                                            <ItemsControl.ItemTemplate>
+                                                                <DataTemplate x:DataType="x:String">
+                                                                    <Button Theme="{StaticResource TransparentButton}"
+                                                                            Width="38" Height="38" Padding="0"
+                                                                            Content="{Binding}" FontSize="18"
+                                                                            HorizontalContentAlignment="Center"
+                                                                            Command="{Binding #IconList.((vm:CategoryItemViewModel)DataContext).SetIconCommand}"
+                                                                            CommandParameter="{Binding}" />
+                                                                </DataTemplate>
+                                                            </ItemsControl.ItemTemplate>
+                                                        </ItemsControl>
+                                                        <TextBlock Text="Colour" FontWeight="SemiBold" Margin="0,4,0,0" />
+                                                        <ItemsControl x:Name="ColorList"
+                                                                      ItemsSource="{x:Static vm:CategoryItemViewModel.ColorChoices}">
+                                                            <ItemsControl.ItemsPanel>
+                                                                <ItemsPanelTemplate>
+                                                                    <WrapPanel />
+                                                                </ItemsPanelTemplate>
+                                                            </ItemsControl.ItemsPanel>
+                                                            <ItemsControl.ItemTemplate>
+                                                                <DataTemplate x:DataType="x:String">
+                                                                    <Button Theme="{StaticResource TransparentButton}"
+                                                                            Width="30" Height="30" Padding="3"
+                                                                            Command="{Binding #ColorList.((vm:CategoryItemViewModel)DataContext).SetColorCommand}"
+                                                                            CommandParameter="{Binding}">
+                                                                        <Border CornerRadius="12" Width="22" Height="22"
+                                                                                Background="{Binding Converter={x:Static views:AppConverters.HexToBrush}}" />
+                                                                    </Button>
+                                                                </DataTemplate>
+                                                            </ItemsControl.ItemTemplate>
+                                                        </ItemsControl>
+                                                    </StackPanel>
+                                                </Flyout>
+                                            </Button.Flyout>
+                                        </Button>
+
+                                        <TextBlock Grid.Column="1" Margin="12,0" VerticalAlignment="Center"
+                                                   Text="{Binding Name}"
+                                                   IsVisible="{Binding !IsEditing}" />
+                                        <TextBox Grid.Column="1" Margin="12,0" VerticalAlignment="Center"
+                                                 Text="{Binding EditName}"
+                                                 IsVisible="{Binding IsEditing}"
+                                                 MaxLength="{x:Static svc:SettingsService.MaxCategoryNameLength}"
+                                                 views:TextBoxFocus.FocusWhenVisible="True">
+                                            <TextBox.KeyBindings>
+                                                <KeyBinding Gesture="Enter" Command="{Binding CommitEditCommand}" />
+                                                <KeyBinding Gesture="Escape" Command="{Binding CancelEditCommand}" />
+                                            </TextBox.KeyBindings>
+                                        </TextBox>
+
+                                        <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="4"
+                                                    IsVisible="{Binding !IsEditing}">
+                                            <Button Theme="{StaticResource TransparentButton}"
+                                                    Command="{Binding BeginEditCommand}"
+                                                    ToolTip.Tip="Rename"
+                                                    AutomationProperties.Name="Rename">
+                                                <ui:SymbolIcon Symbol="Edit" FontSize="16" />
+                                            </Button>
+                                            <Button Theme="{StaticResource TransparentButton}"
+                                                    Command="{Binding RemoveCommand}"
+                                                    ToolTip.Tip="Remove"
+                                                    AutomationProperties.Name="Remove">
+                                                <ui:SymbolIcon Symbol="Delete" FontSize="16" />
+                                            </Button>
+                                        </StackPanel>
+
                                         <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="4"
                                                     IsVisible="{Binding IsEditing}">
                                             <Button Classes="accent"

@@ -11,4 +11,11 @@ public abstract class PageViewModelBase : ViewModelBase
     /// Short description shown under the page header.
     /// </summary>
     public abstract string Description { get; }
+
+    /// <summary>
+    /// Called each time the page is shown.
+    /// </summary>
+    public virtual void OnNavigatedTo()
+    {
+    }
 }

@@ -4,21 +4,328 @@
              xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
              xmlns:ui="using:FluentAvalonia.UI.Controls"
              xmlns:vm="using:HisaabKitaab.ViewModels"
-             mc:Ignorable="d" d:DesignWidth="900" d:DesignHeight="600"
+             xmlns:m="using:HisaabKitaab.Models"
+             xmlns:views="using:HisaabKitaab.Views"
+             mc:Ignorable="d" d:DesignWidth="1000" d:DesignHeight="700"
              x:Class="HisaabKitaab.Views.ExpensesView"
              x:DataType="vm:ExpensesViewModel">
-    <Design.DataContext>
-        <vm:ExpensesViewModel />
-    </Design.DataContext>
 
-    <StackPanel Margin="32,24" Spacing="8">
-        <TextBlock Text="{Binding Title}" Theme="{StaticResource TitleTextBlockStyle}" />
-        <TextBlock Text="{Binding Description}" Theme="{StaticResource BodyTextBlockStyle}" Opacity="0.75" />
-        <ui:InfoBar Margin="0,16,0,0"
-                    IsOpen="True"
-                    IsClosable="False"
-                    Severity="Informational"
-                    Title="Not built yet"
-                    Message="This screen arrives in stage 4 of the build plan." />
-    </StackPanel>
+    <UserControl.Styles>
+        <Style Selector="Border.card">
+            <Setter Property="Background" Value="{DynamicResource CardBackgroundFillColorDefaultBrush}" />
+            <Setter Property="BorderBrush" Value="{DynamicResource CardStrokeColorDefaultBrush}" />
+            <Setter Property="BorderThickness" Value="1" />
+            <Setter Property="CornerRadius" Value="8" />
+        </Style>
+        <Style Selector="TextBlock.caption">
+            <Setter Property="FontSize" Value="12" />
+            <Setter Property="Opacity" Value="0.7" />
+            <Setter Property="Margin" Value="0,0,0,4" />
+        </Style>
+        <Style Selector="TextBlock.statValue">
+            <Setter Property="FontSize" Value="18" />
+            <Setter Property="FontWeight" Value="SemiBold" />
+        </Style>
+
+        <!-- Payment method picker: a row of pill buttons -->
+        <Style Selector="ListBox.segmented">
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="BorderThickness" Value="0" />
+            <Setter Property="Padding" Value="0" />
+        </Style>
+        <Style Selector="ListBox.segmented ListBoxItem">
+            <Setter Property="Padding" Value="12,6" />
+            <Setter Property="Margin" Value="0,0,6,0" />
+            <Setter Property="MinHeight" Value="32" />
+            <Setter Property="CornerRadius" Value="16" />
+            <Setter Property="BorderThickness" Value="1" />
+            <Setter Property="BorderBrush" Value="{DynamicResource ControlStrokeColorDefaultBrush}" />
+        </Style>
+        <!-- No sidebar-style selection pill; the selected option is filled instead -->
+        <Style Selector="ListBox.segmented ListBoxItem /template/ Rectangle">
+            <Setter Property="IsVisible" Value="False" />
+        </Style>
+        <Style Selector="ListBox.segmented ListBoxItem:selected /template/ ContentPresenter#PART_ContentPresenter">
+            <Setter Property="Background" Value="{DynamicResource AccentFillColorDefaultBrush}" />
+            <Setter Property="BorderBrush" Value="{DynamicResource AccentFillColorDefaultBrush}" />
+            <Setter Property="Foreground" Value="{DynamicResource TextOnAccentFillColorPrimaryBrush}" />
+        </Style>
+        <Style Selector="ListBox.segmented ListBoxItem:selected:pointerover /template/ ContentPresenter#PART_ContentPresenter">
+            <Setter Property="Background" Value="{DynamicResource AccentFillColorSecondaryBrush}" />
+            <Setter Property="Foreground" Value="{DynamicResource TextOnAccentFillColorPrimaryBrush}" />
+        </Style>
+    </UserControl.Styles>
+
+    <Grid RowDefinitions="Auto,Auto,Auto,Auto,*" Margin="32,24,32,16">
+
+        <!-- Header: title and month navigation -->
+        <Grid ColumnDefinitions="*,Auto" Margin="0,0,0,16">
+            <StackPanel Spacing="4" VerticalAlignment="Center">
+                <TextBlock Text="{Binding Title}" Theme="{StaticResource TitleTextBlockStyle}" />
+                <TextBlock Text="{Binding Description}" Opacity="0.75" />
+            </StackPanel>
+
+            <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
+                <ui:ProgressRing IsIndeterminate="True" Width="20" Height="20" IsVisible="{Binding IsBusy}" />
+                <Button Theme="{StaticResource TransparentButton}" Command="{Binding PreviousMonthCommand}"
+                        ToolTip.Tip="Previous month" AutomationProperties.Name="Previous month">
+                    <ui:SymbolIcon Symbol="ChevronLeft" FontSize="16" />
+                </Button>
+                <TextBlock Text="{Binding MonthTitle}" Theme="{StaticResource SubtitleTextBlockStyle}"
+                           MinWidth="180" TextAlignment="Center" VerticalAlignment="Center" />
+                <Button Theme="{StaticResource TransparentButton}" Command="{Binding NextMonthCommand}"
+                        ToolTip.Tip="Next month" AutomationProperties.Name="Next month">
+                    <ui:SymbolIcon Symbol="ChevronRight" FontSize="16" />
+                </Button>
+                <Button Content="This month" Command="{Binding GoToThisMonthCommand}"
+                        IsVisible="{Binding !IsCurrentMonth}" />
+                <Button Command="{Binding ReloadCommand}" ToolTip.Tip="Reload from file"
+                        AutomationProperties.Name="Reload from file">
+                    <ui:SymbolIcon Symbol="Refresh" FontSize="16" />
+                </Button>
+                <Button Command="{Binding OpenWorkbookCommand}" ToolTip.Tip="{Binding WorkbookName, StringFormat='Open {0}'}">
+                    <StackPanel Orientation="Horizontal" Spacing="6">
+                        <ui:SymbolIcon Symbol="OpenFile" FontSize="16" />
+                        <TextBlock Text="Open in Excel" />
+                    </StackPanel>
+                </Button>
+            </StackPanel>
+        </Grid>
+
+        <!-- Month totals -->
+        <Border Grid.Row="1" Classes="card" Padding="20,12" Margin="0,0,0,12">
+            <Grid ColumnDefinitions="1.4*,*,*,*">
+                <StackPanel>
+                    <TextBlock Classes="caption" Text="{Binding CountText}" />
+                    <TextBlock Text="{Binding TotalText}" FontSize="24" FontWeight="SemiBold" />
+                </StackPanel>
+                <StackPanel Grid.Column="1" VerticalAlignment="Bottom">
+                    <TextBlock Classes="caption" Text="💵 Cash" />
+                    <TextBlock Classes="statValue" Text="{Binding CashText}" />
+                </StackPanel>
+                <StackPanel Grid.Column="2" VerticalAlignment="Bottom">
+                    <TextBlock Classes="caption" Text="🏦 Bank" />
+                    <TextBlock Classes="statValue" Text="{Binding BankText}" />
+                </StackPanel>
+                <StackPanel Grid.Column="3" VerticalAlignment="Bottom">
+                    <TextBlock Classes="caption" Text="💳 Credit Card" />
+                    <TextBlock Classes="statValue" Text="{Binding CardText}" />
+                </StackPanel>
+            </Grid>
+        </Border>
+
+        <!-- Rows in the workbook that couldn't be read -->
+        <ui:InfoBar Grid.Row="2" Margin="0,0,0,12"
+                    IsOpen="{Binding HasProblems}" IsVisible="{Binding HasProblems}"
+                    IsClosable="False" Severity="Warning"
+                    Title="Some rows need fixing"
+                    Message="{Binding ProblemSummary}">
+            <ui:InfoBar.ActionButton>
+                <Button Content="Open in Excel" Command="{Binding OpenWorkbookCommand}" />
+            </ui:InfoBar.ActionButton>
+            <ItemsControl ItemsSource="{Binding Problems}" Margin="0,0,0,8">
+                <ItemsControl.ItemTemplate>
+                    <DataTemplate x:DataType="m:SheetProblem">
+                        <TextBlock FontSize="12" TextWrapping="Wrap">
+                            <Run Text="Row" />
+                            <Run Text="{Binding RowNumber}" FontWeight="SemiBold" />
+                            <Run Text="—" />
+                            <Run Text="{Binding Message}" />
+                        </TextBlock>
+                    </DataTemplate>
+                </ItemsControl.ItemTemplate>
+            </ItemsControl>
+        </ui:InfoBar>
+
+        <!-- Quick add / edit form -->
+        <Border Grid.Row="3" Classes="card" Padding="16" Margin="0,0,0,12">
+            <StackPanel x:Name="EntryForm" Spacing="12">
+                <Grid ColumnDefinitions="Auto,*">
+                    <TextBlock Text="{Binding FormTitle}" Theme="{StaticResource BodyStrongTextBlockStyle}" />
+                    <TextBlock Grid.Column="1" Text="{Binding StatusMessage}" HorizontalAlignment="Right"
+                               Foreground="{DynamicResource SystemFillColorSuccessBrush}" />
+                </Grid>
+
+                <Grid ColumnDefinitions="*,12,1.3*,12,*,12,*">
+                    <StackPanel>
+                        <TextBlock Classes="caption" Text="Amount (₨)" />
+                        <ui:NumberBox x:Name="AmountBox"
+                                      Value="{Binding EntryAmount, Mode=TwoWay}"
+                                      AcceptsExpression="True"
+                                      SpinButtonPlacementMode="Hidden"
+                                      HorizontalAlignment="Stretch"
+                                      PlaceholderText="e.g. 450 or 250+200"
+                                      AutomationProperties.Name="Amount" />
+                    </StackPanel>
+
+                    <StackPanel Grid.Column="2">
+                        <TextBlock Classes="caption" Text="Category" />
+                        <ComboBox ItemsSource="{Binding CategoryOptions}"
+                                  SelectedItem="{Binding EntryCategory}"
+                                  PlaceholderText="Category"
+                                  HorizontalAlignment="Stretch"
+                                  AutomationProperties.Name="Category">
+                            <ComboBox.ItemTemplate>
+                                <DataTemplate x:DataType="vm:CategoryOption">
+                                    <StackPanel Orientation="Horizontal" Spacing="8">
+                                        <Border Width="22" Height="22" CornerRadius="11"
+                                                Background="{Binding Color, Converter={x:Static views:AppConverters.HexToTint}}">
+                                            <TextBlock Text="{Binding Icon}" FontSize="12"
+                                                       HorizontalAlignment="Center" VerticalAlignment="Center" />
+                                        </Border>
+                                        <TextBlock Text="{Binding Name}" VerticalAlignment="Center" />
+                                    </StackPanel>
+                                </DataTemplate>
+                            </ComboBox.ItemTemplate>
+                        </ComboBox>
+                    </StackPanel>
+
+                    <StackPanel Grid.Column="4">
+                        <TextBlock Classes="caption" Text="Family member" />
+                        <ComboBox ItemsSource="{Binding MemberOptions}"
+                                  SelectedItem="{Binding EntryMember}"
+                                  PlaceholderText="Who?"
+                                  HorizontalAlignment="Stretch"
+                                  AutomationProperties.Name="Family member" />
+                    </StackPanel>
+
+                    <StackPanel Grid.Column="6">
+                        <TextBlock Classes="caption" Text="Date" />
+                        <CalendarDatePicker SelectedDate="{Binding EntryDate}"
+                                            SelectedDateFormat="Custom"
+                                            CustomDateFormatString="ddd, d MMM yyyy"
+                                            HorizontalAlignment="Stretch"
+                                            AutomationProperties.Name="Date" />
+                    </StackPanel>
+                </Grid>
+
+                <Grid ColumnDefinitions="Auto,12,*,12,Auto">
+                    <StackPanel>
+                        <TextBlock Classes="caption" Text="Paid with" />
+                        <ListBox Classes="segmented"
+                                 ItemsSource="{Binding PaymentOptions}"
+                                 SelectedItem="{Binding EntryPayment}"
+                                 AutomationProperties.Name="Paid with">
+                            <ListBox.ItemsPanel>
+                                <ItemsPanelTemplate>
+                                    <StackPanel Orientation="Horizontal" />
+                                </ItemsPanelTemplate>
+                            </ListBox.ItemsPanel>
+                            <ListBox.ItemTemplate>
+                                <DataTemplate x:DataType="vm:PaymentOption">
+                                    <StackPanel Orientation="Horizontal" Spacing="6">
+                                        <TextBlock Text="{Binding Icon}" />
+                                        <TextBlock Text="{Binding Name}" />
+                                    </StackPanel>
+                                </DataTemplate>
+                            </ListBox.ItemTemplate>
+                        </ListBox>
+                    </StackPanel>
+
+                    <StackPanel Grid.Column="2">
+                        <TextBlock Classes="caption" Text="Note" />
+                        <TextBox Text="{Binding EntryNote}" Watermark="Optional, e.g. milk and eggs"
+                                 AutomationProperties.Name="Note" />
+                    </StackPanel>
+
+                    <StackPanel Grid.Column="4" Orientation="Horizontal" Spacing="8" VerticalAlignment="Bottom">
+                        <Button Content="Cancel" Command="{Binding CancelEditCommand}" IsVisible="{Binding IsEditing}" />
+                        <Button Classes="accent" Command="{Binding SaveEntryCommand}" MinWidth="110"
+                                ToolTip.Tip="Enter">
+                            <StackPanel Orientation="Horizontal" Spacing="6">
+                                <ui:SymbolIcon Symbol="Add" FontSize="16" IsVisible="{Binding !IsEditing}" />
+                                <ui:SymbolIcon Symbol="Save" FontSize="16" IsVisible="{Binding IsEditing}" />
+                                <TextBlock Text="{Binding SaveButtonText}" />
+                            </StackPanel>
+                        </Button>
+                    </StackPanel>
+                </Grid>
+
+                <ui:InfoBar IsOpen="{Binding HasError}" IsVisible="{Binding HasError}"
+                            IsClosable="False" Severity="Error"
+                            Message="{Binding ErrorMessage}" />
+
+                <TextBlock FontSize="12" Opacity="0.6" IsVisible="{Binding !HasMembers}"
+                           Text="Tip: add your family members in Settings to pick who spent it." />
+            </StackPanel>
+        </Border>
+
+        <!-- The month's expenses, newest first -->
+        <TextBlock Grid.Row="4" Text="{Binding EmptyText}" Opacity="0.6"
+                   HorizontalAlignment="Center" Margin="0,32"
+                   IsVisible="{Binding !HasRows}" />
+
+        <DataGrid Grid.Row="4" x:Name="ExpensesGrid"
+                  ItemsSource="{Binding Rows}"
+                  IsVisible="{Binding HasRows}"
+                  IsReadOnly="True"
+                  CanUserSortColumns="True"
+                  CanUserResizeColumns="True"
+                  CanUserReorderColumns="False"
+                  GridLinesVisibility="Horizontal"
+                  HeadersVisibility="Column"
+                  SelectionMode="Single"
+                  DoubleTapped="OnGridDoubleTapped">
+            <DataGrid.Columns>
+                <DataGridTextColumn Header="Date" x:DataType="vm:ExpenseRowViewModel"
+                                    Binding="{Binding DateText}" SortMemberPath="Date" Width="110" />
+                <DataGridTemplateColumn Header="Category" SortMemberPath="CategoryName" Width="1.2*" MinWidth="150">
+                    <DataGridTemplateColumn.CellTemplate>
+                        <DataTemplate x:DataType="vm:ExpenseRowViewModel">
+                            <StackPanel Orientation="Horizontal" Spacing="8" Margin="12,0" VerticalAlignment="Center">
+                                <Border Width="24" Height="24" CornerRadius="12"
+                                        Background="{Binding Category.Color, Converter={x:Static views:AppConverters.HexToTint}}">
+                                    <TextBlock Text="{Binding Category.Icon}" FontSize="12"
+                                               HorizontalAlignment="Center" VerticalAlignment="Center" />
+                                </Border>
+                                <TextBlock Text="{Binding CategoryName}" VerticalAlignment="Center" />
+                            </StackPanel>
+                        </DataTemplate>
+                    </DataGridTemplateColumn.CellTemplate>
+                </DataGridTemplateColumn>
+                <DataGridTextColumn Header="Member" x:DataType="vm:ExpenseRowViewModel"
+                                    Binding="{Binding Member}" SortMemberPath="Member" Width="*" MinWidth="100" />
+                <DataGridTemplateColumn Header="Amount" SortMemberPath="Amount" Width="115">
+                    <DataGridTemplateColumn.CellTemplate>
+                        <DataTemplate x:DataType="vm:ExpenseRowViewModel">
+                            <TextBlock Text="{Binding AmountText}" FontWeight="SemiBold"
+                                       HorizontalAlignment="Right" VerticalAlignment="Center" Margin="12,0" />
+                        </DataTemplate>
+                    </DataGridTemplateColumn.CellTemplate>
+                </DataGridTemplateColumn>
+                <DataGridTemplateColumn Header="Paid with" SortMemberPath="PaymentName" Width="135">
+                    <DataGridTemplateColumn.CellTemplate>
+                        <DataTemplate x:DataType="vm:ExpenseRowViewModel">
+                            <StackPanel Orientation="Horizontal" Spacing="6" Margin="12,0" VerticalAlignment="Center">
+                                <TextBlock Text="{Binding Payment.Icon}" />
+                                <TextBlock Text="{Binding PaymentName}" />
+                            </StackPanel>
+                        </DataTemplate>
+                    </DataGridTemplateColumn.CellTemplate>
+                </DataGridTemplateColumn>
+                <DataGridTextColumn Header="Note" x:DataType="vm:ExpenseRowViewModel"
+                                    Binding="{Binding Note}" Width="1.8*" MinWidth="120" />
+                <DataGridTemplateColumn Width="84" CanUserSort="False" CanUserResize="False">
+                    <DataGridTemplateColumn.CellTemplate>
+                        <DataTemplate x:DataType="vm:ExpenseRowViewModel">
+                            <StackPanel Orientation="Horizontal" Spacing="2" HorizontalAlignment="Right" Margin="0,0,8,0">
+                                <Button Theme="{StaticResource TransparentButton}"
+                                        Command="{Binding $parent[DataGrid].((vm:ExpensesViewModel)DataContext).BeginEditCommand}"
+                                        CommandParameter="{Binding}"
+                                        ToolTip.Tip="Edit" AutomationProperties.Name="Edit expense">
+                                    <ui:SymbolIcon Symbol="Edit" FontSize="15" />
+                                </Button>
+                                <Button Theme="{StaticResource TransparentButton}"
+                                        Command="{Binding $parent[DataGrid].((vm:ExpensesViewModel)DataContext).DeleteCommand}"
+                                        CommandParameter="{Binding}"
+                                        ToolTip.Tip="Delete" AutomationProperties.Name="Delete expense">
+                                    <ui:SymbolIcon Symbol="Delete" FontSize="15" />
+                                </Button>
+                            </StackPanel>
+                        </DataTemplate>
+                    </DataGridTemplateColumn.CellTemplate>
+                </DataGridTemplateColumn>
+            </DataGrid.Columns>
+        </DataGrid>
+    </Grid>
 </UserControl>

@@ -191,7 +191,16 @@ public class ExcelService
     /// workbooks. Files that can't be updated (e.g. open in Excel) are reported
     /// in the result rather than stopping the others.
     /// </summary>
-    public RenameResult RenameFamilyMember(int year, string oldName, string newName)
+    public RenameResult RenameFamilyMember(int year, string oldName, string newName) =>
+        RenameInYear(year, (sheet) => sheet.RenameFamilyMember(oldName, newName));
+
+    /// <summary>
+    /// Same as <see cref="RenameFamilyMember"/>, for the Category column.
+    /// </summary>
+    public RenameResult RenameCategory(int year, string oldName, string newName) =>
+        RenameInYear(year, (sheet) => sheet.RenameCategory(oldName, newName));
+
+    private RenameResult RenameInYear(int year, Func<ExpensesSheet, int> rename)
     {
         var updated = new List<string>();
         var failed = new List<string>();
@@ -204,7 +213,7 @@ public class ExcelService
             {
                 using var workbook = Open(path);
                 var sheet = ExpensesSheet.Find(workbook, month);
-                var count = sheet?.RenameFamilyMember(oldName, newName) ?? 0;
+                var count = sheet is null ? 0 : rename(sheet);
                 if (count == 0)
                     continue;
 

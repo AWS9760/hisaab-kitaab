@@ -22,8 +22,9 @@ internal sealed class ExpensesSheet
     private const int HeaderRow = 1;
     private const int FirstDataRow = 2;
 
-    // Rows given formats and validation up front, so rows typed by hand in Excel look right too.
-    private const int PreformattedRows = 5000;
+    // How far below the data the Payment Method dropdown reaches, so rows typed
+    // by hand in Excel get it too.
+    private const int DropdownRows = 5000;
 
     private enum Col { Date, FamilyMember, Category, Amount, Note, PaymentMethod, Id }
 
@@ -173,20 +174,21 @@ internal sealed class ExpensesSheet
         return true;
     }
 
-    /// <summary>
-    /// Replaces the family member name on every row that has <paramref name="oldName"/>
-    /// (ignoring case and surrounding spaces), including rows that otherwise have problems.
-    /// </summary>
-    public int RenameFamilyMember(string oldName, string newName)
-    {
-        if (!_cols.TryGetValue(Col.FamilyMember, out _))
-            return 0;
+    public int RenameFamilyMember(string oldName, string newName) => RenameValue(Col.FamilyMember, oldName, newName);
 
+    public int RenameCategory(string oldName, string newName) => RenameValue(Col.Category, oldName, newName);
+
+    /// <summary>
+    /// Replaces <paramref name="oldName"/> with <paramref name="newName"/> in one column on every
+    /// row (ignoring case and surrounding spaces), including rows that otherwise have problems.
+    /// </summary>
+    private int RenameValue(Col col, string oldName, string newName)
+    {
         var target = oldName.Trim();
         var count = 0;
         foreach (var row in DataRowNumbers())
         {
-            var cell = Cell(row, Col.FamilyMember);
+            var cell = Cell(row, col);
             if (string.Equals(ReadText(cell), target, StringComparison.CurrentCultureIgnoreCase))
             {
                 cell.Value = newName.Trim();
@@ -231,16 +233,12 @@ internal sealed class ExpensesSheet
     {
         var col = _cols[spec.Key];
         _ws.Column(col).Width = spec.Width;
-        var dataRange = _ws.Range(FirstDataRow, col, PreformattedRows, col);
 
+        // Date and amount formats are applied per row as rows are written, not
+        // to a block of empty rows up front: pre-formatted rows count as "used"
+        // in Excel, which sends Ctrl+End to row 5000 and shrinks the scrollbar.
         switch (spec.Key)
         {
-            case Col.Date:
-                dataRange.Style.DateFormat.Format = DateFormat;
-                break;
-            case Col.Amount:
-                dataRange.Style.NumberFormat.Format = AmountFormat;
-                break;
             case Col.PaymentMethod:
                 ApplyPaymentValidation();
                 break;
@@ -273,7 +271,7 @@ internal sealed class ExpensesSheet
         _ws.DataValidations.Delete(dv => dv.Ranges.Any(r =>
             r.RangeAddress.FirstAddress.ColumnNumber <= col && r.RangeAddress.LastAddress.ColumnNumber >= col));
 
-        var lastRow = Math.Max(PreformattedRows, LastDataRow() + PreformattedRows);
+        var lastRow = LastDataRow() + DropdownRows;
         var validation = _ws.Range(FirstDataRow, col, lastRow, col).CreateDataValidation();
         validation.List("\"" + string.Join(",", PaymentMethodNames.All.Select(m => m.ToDisplayName())) + "\"", true);
         validation.ErrorTitle = "Payment method";

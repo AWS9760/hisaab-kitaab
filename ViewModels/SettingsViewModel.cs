@@ -12,9 +12,6 @@ public partial class SettingsViewModel : PageViewModelBase
     private readonly ExcelService _excel;
     private readonly TimeProvider _clock;
 
-    // A rename whose workbook update partly failed, kept so the user can retry.
-    private (int Year, string OldName, string NewName)? _pendingRename;
-
     [ObservableProperty]
     [NotifyCanExecuteChangedFor(nameof(AddMemberCommand))]
     private string _newMemberName = string.Empty;
@@ -22,15 +19,6 @@ public partial class SettingsViewModel : PageViewModelBase
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(HasError))]
     private string? _errorMessage;
-
-    // Result of pushing a rename into the Excel files.
-    [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(HasRenameSummary))]
-    private string? _renameSummary;
-
-    [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(HasRenameWarning))]
-    private string? _renameWarning;
 
     public SettingsViewModel(SettingsService settings, IDialogService dialogs, ExcelService excel, TimeProvider? clock = null)
     {
@@ -43,21 +31,26 @@ public partial class SettingsViewModel : PageViewModelBase
             Members.Add(new FamilyMemberItemViewModel(this, member.Id, member.Name));
 
         Members.CollectionChanged += (_, _) => OnPropertyChanged(nameof(HasMembers));
+
+        Categories = new CategorySettingsViewModel(settings, dialogs, excel, _clock);
     }
 
     public override string Title => "Settings";
 
-    public override string Description => "Family members and app preferences.";
+    public override string Description => "Family members, categories and app preferences.";
 
     public ObservableCollection<FamilyMemberItemViewModel> Members { get; } = new();
+
+    public CategorySettingsViewModel Categories { get; }
+
+    /// <summary>
+    /// Outcome of carrying a member rename into this year's workbooks.
+    /// </summary>
+    public WorkbookRenameNotice RenameNotice { get; } = new();
 
     public bool HasMembers => Members.Count > 0;
 
     public bool HasError => ErrorMessage is not null;
-
-    public bool HasRenameSummary => RenameSummary is not null;
-
-    public bool HasRenameWarning => RenameWarning is not null;
 
     /// <summary>
     /// Shown when the settings file on disk was unreadable at startup.
@@ -69,8 +62,6 @@ public partial class SettingsViewModel : PageViewModelBase
     public string SettingsFilePath => _settings.FilePath;
 
     public string DataFolder => _excel.DataFolder;
-
-    public int MaxNameLength => SettingsService.MaxMemberNameLength;
 
     // Stale errors disappear as soon as the user starts correcting them.
     partial void OnNewMemberNameChanged(string value) => ErrorMessage = null;
@@ -87,8 +78,12 @@ public partial class SettingsViewModel : PageViewModelBase
             return;
         }
 
-        if (!TrySave(() => _settings.AddFamilyMember(NewMemberName), out var member))
+        var name = NewMemberName;
+        if (!SettingsSave.Try(() => _settings.AddFamilyMember(name), out var member, out error))
+        {
+            ErrorMessage = error;
             return;
+        }
 
         Members.Add(new FamilyMemberItemViewModel(this, member.Id, member.Name));
         NewMemberName = string.Empty;
@@ -101,7 +96,7 @@ public partial class SettingsViewModel : PageViewModelBase
             other.IsEditing = false;
 
         ErrorMessage = null;
-        RenameSummary = null;
+        RenameNotice.ClearSummary();
         item.EditName = item.Name;
         item.IsEditing = true;
     }
@@ -119,60 +114,22 @@ public partial class SettingsViewModel : PageViewModelBase
         }
 
         var error = _settings.ValidateMemberName(newName, item.Id);
+        if (error is null)
+            SettingsSave.Try(() => _settings.RenameFamilyMember(item.Id, newName), out error);
         if (error is not null)
         {
             ErrorMessage = error;
             return;
         }
 
-        if (!TrySave(() => { _settings.RenameFamilyMember(item.Id, newName); return true; }, out _))
-            return;
-
         var oldName = item.Name;
         item.Name = newName;
         item.IsEditing = false;
 
-        RenameInWorkbooks(_clock.GetLocalNow().Year, oldName, newName);
+        // Past expenses in this year's workbooks follow the new name; earlier years keep the old one.
+        var year = _clock.GetLocalNow().Year;
+        RenameNotice.Run(year, oldName, () => _excel.RenameFamilyMember(year, oldName, newName));
     }
-
-    /// <summary>
-    /// Updates the member's name on past expenses in this year's workbooks.
-    /// Earlier years keep the name they were recorded with.
-    /// </summary>
-    private void RenameInWorkbooks(int year, string oldName, string newName)
-    {
-        RenameSummary = null;
-        RenameWarning = null;
-        _pendingRename = null;
-
-        var result = _excel.RenameFamilyMember(year, oldName, newName);
-
-        if (result.FilesFailed.Count > 0)
-        {
-            _pendingRename = (year, oldName, newName);
-            RenameWarning = $"Couldn't update {string.Join(", ", result.FilesFailed)}, so expenses there still say " +
-                            $"\"{oldName}\". The file may be open in Excel: close it and choose Retry.";
-        }
-
-        if (result.RowsUpdated > 0)
-        {
-            RenameSummary = $"Renamed {Plural(result.RowsUpdated, "expense")} in {year}'s " +
-                            $"{Plural(result.FilesUpdated.Count, "workbook")}.";
-        }
-
-        RetryRenameCommand.NotifyCanExecuteChanged();
-    }
-
-    private bool CanRetryRename() => _pendingRename is not null;
-
-    [RelayCommand(CanExecute = nameof(CanRetryRename))]
-    private void RetryRename()
-    {
-        if (_pendingRename is { } pending)
-            RenameInWorkbooks(pending.Year, pending.OldName, pending.NewName);
-    }
-
-    private static string Plural(int count, string noun) => count == 1 ? $"1 {noun}" : $"{count} {noun}s";
 
     internal void CancelRename(FamilyMemberItemViewModel item)
     {
@@ -190,31 +147,38 @@ public partial class SettingsViewModel : PageViewModelBase
         if (!confirmed)
             return;
 
-        if (!TrySave(() => { _settings.RemoveFamilyMember(item.Id); return true; }, out _))
+        if (!SettingsSave.Try(() => _settings.RemoveFamilyMember(item.Id), out var error))
+        {
+            ErrorMessage = error;
             return;
+        }
 
+        ErrorMessage = null;
         Members.Remove(item);
     }
+}
 
-    private bool TrySave<T>(Func<T> action, out T result)
+/// <summary>
+/// Runs a settings change and turns file errors into a message for the UI.
+/// </summary>
+internal static class SettingsSave
+{
+    public static bool Try<T>(Func<T> action, out T result, out string? error)
     {
         try
         {
             result = action();
-            ErrorMessage = null;
+            error = null;
             return true;
         }
-        catch (IOException ex)
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
         {
             result = default!;
-            ErrorMessage = $"Couldn't save settings: {ex.Message}";
-            return false;
-        }
-        catch (UnauthorizedAccessException ex)
-        {
-            result = default!;
-            ErrorMessage = $"Couldn't save settings: {ex.Message}";
+            error = $"Couldn't save settings: {ex.Message}";
             return false;
         }
     }
+
+    public static bool Try(Action action, out string? error) =>
+        Try(() => { action(); return true; }, out _, out error);
 }

@@ -18,12 +18,17 @@ public partial class App : Application
     {
         if (ApplicationLifetime is IClassicDesktopStyleApplicationLifetime desktop)
         {
-            var settings = new SettingsService(SettingsService.DefaultFilePath);
+            // HISAAB_KITAAB_HOME keeps settings and workbooks together in one folder
+            // (portable installs, or trying the app without touching real data).
+            var home = Environment.GetEnvironmentVariable("HISAAB_KITAAB_HOME");
+            var settings = string.IsNullOrWhiteSpace(home)
+                ? new SettingsService(SettingsService.DefaultFilePath)
+                : new SettingsService(Path.Combine(home, "settings.json"), Path.Combine(home, "Workbooks"));
             settings.Load();
 
             desktop.MainWindow = new MainWindow
             {
-                DataContext = new MainWindowViewModel(settings, new DialogService(), new ExcelService(settings.DataFolder)),
+                DataContext = new MainWindowViewModel(settings, new DialogService(), new ExcelService(settings.DataFolder), new LauncherService()),
             };
         }
 

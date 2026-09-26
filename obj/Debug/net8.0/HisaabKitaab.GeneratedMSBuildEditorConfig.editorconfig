@@ -32,6 +32,9 @@ build_property.EnableCodeStyleSeverity =
 [D:/Uni Work/Programing Language Stuff/Personal Projects/Hisaab Kitaab/HisaabKitaab/App.axaml]
 build_metadata.AdditionalFiles.SourceItemGroup = AvaloniaXaml
 
+[D:/Uni Work/Programing Language Stuff/Personal Projects/Hisaab Kitaab/HisaabKitaab/Styles/DataGrid.axaml]
+build_metadata.AdditionalFiles.SourceItemGroup = AvaloniaXaml
+
 [D:/Uni Work/Programing Language Stuff/Personal Projects/Hisaab Kitaab/HisaabKitaab/Styles/Icons.axaml]
 build_metadata.AdditionalFiles.SourceItemGroup = AvaloniaXaml
 

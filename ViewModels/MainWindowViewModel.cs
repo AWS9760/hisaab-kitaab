@@ -10,6 +10,7 @@ public partial class MainWindowViewModel : ViewModelBase
     private readonly SettingsService _settings;
     private readonly IDialogService _dialogs;
     private readonly ExcelService _excel;
+    private readonly ILauncherService _launcher;
 
     [ObservableProperty]
     private PageViewModelBase _currentPage;
@@ -17,11 +18,12 @@ public partial class MainWindowViewModel : ViewModelBase
     [ObservableProperty]
     private AppPage _currentPageKey;
 
-    public MainWindowViewModel(SettingsService settings, IDialogService dialogs, ExcelService excel)
+    public MainWindowViewModel(SettingsService settings, IDialogService dialogs, ExcelService excel, ILauncherService launcher)
     {
         _settings = settings;
         _dialogs = dialogs;
         _excel = excel;
+        _launcher = launcher;
 
         _currentPage = GetOrCreatePage(AppPage.Dashboard);
         _currentPageKey = AppPage.Dashboard;
@@ -31,6 +33,7 @@ public partial class MainWindowViewModel : ViewModelBase
     {
         CurrentPage = GetOrCreatePage(page);
         CurrentPageKey = page;
+        CurrentPage.OnNavigatedTo();
     }
 
     private PageViewModelBase GetOrCreatePage(AppPage page)
@@ -40,7 +43,7 @@ public partial class MainWindowViewModel : ViewModelBase
             vm = page switch
             {
                 AppPage.Dashboard => new DashboardViewModel(),
-                AppPage.Expenses => new ExpensesViewModel(),
+                AppPage.Expenses => new ExpensesViewModel(_excel, _settings, _dialogs, _launcher),
                 AppPage.BankCash => new BankCashViewModel(),
                 AppPage.Currency => new CurrencyViewModel(),
                 AppPage.CreditCard => new CreditCardViewModel(),
