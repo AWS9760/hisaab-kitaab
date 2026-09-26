@@ -86,3 +86,4 @@ D:\Uni Work\Programing Language Stuff\Personal Projects\Hisaab Kitaab\HisaabKita
 D:\Uni Work\Programing Language Stuff\Personal Projects\Hisaab Kitaab\HisaabKitaab\obj\Debug\net8.0\HisaabKitaab.pdb
 D:\Uni Work\Programing Language Stuff\Personal Projects\Hisaab Kitaab\HisaabKitaab\obj\Debug\net8.0\HisaabKitaab.genruntimeconfig.cache
 D:\Uni Work\Programing Language Stuff\Personal Projects\Hisaab Kitaab\HisaabKitaab\obj\Debug\net8.0\ref\HisaabKitaab.dll
+D:\Uni Work\Programing Language Stuff\Personal Projects\Hisaab Kitaab\HisaabKitaab\obj\Debug\net8.0\HisaabKitaab.sourcelink.json

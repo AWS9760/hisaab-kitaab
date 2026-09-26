@@ -1,4 +1,5 @@
 using CommunityToolkit.Mvvm.ComponentModel;
+using HisaabKitaab.Services;
 
 namespace HisaabKitaab.ViewModels;
 
@@ -6,6 +7,8 @@ public partial class MainWindowViewModel : ViewModelBase
 {
     // Pages are created once and reused, so switching tabs keeps their state.
     private readonly Dictionary<AppPage, PageViewModelBase> _pages = new();
+    private readonly SettingsService _settings;
+    private readonly IDialogService _dialogs;
 
     [ObservableProperty]
     private PageViewModelBase _currentPage;
@@ -13,8 +16,11 @@ public partial class MainWindowViewModel : ViewModelBase
     [ObservableProperty]
     private AppPage _currentPageKey;
 
-    public MainWindowViewModel()
+    public MainWindowViewModel(SettingsService settings, IDialogService dialogs)
     {
+        _settings = settings;
+        _dialogs = dialogs;
+
         _currentPage = GetOrCreatePage(AppPage.Dashboard);
         _currentPageKey = AppPage.Dashboard;
     }
@@ -37,7 +43,7 @@ public partial class MainWindowViewModel : ViewModelBase
                 AppPage.Currency => new CurrencyViewModel(),
                 AppPage.CreditCard => new CreditCardViewModel(),
                 AppPage.Zakat => new ZakatViewModel(),
-                AppPage.Settings => new SettingsViewModel(),
+                AppPage.Settings => new SettingsViewModel(_settings, _dialogs),
                 _ => throw new ArgumentOutOfRangeException(nameof(page), page, null),
             };
             _pages[page] = vm;

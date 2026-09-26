@@ -4,21 +4,155 @@
              xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
              xmlns:ui="using:FluentAvalonia.UI.Controls"
              xmlns:vm="using:HisaabKitaab.ViewModels"
+             xmlns:views="using:HisaabKitaab.Views"
+             xmlns:svc="using:HisaabKitaab.Services"
              mc:Ignorable="d" d:DesignWidth="900" d:DesignHeight="600"
              x:Class="HisaabKitaab.Views.SettingsView"
              x:DataType="vm:SettingsViewModel">
-    <Design.DataContext>
-        <vm:SettingsViewModel />
-    </Design.DataContext>
 
-    <StackPanel Margin="32,24" Spacing="8">
-        <TextBlock Text="{Binding Title}" Theme="{StaticResource TitleTextBlockStyle}" />
-        <TextBlock Text="{Binding Description}" Theme="{StaticResource BodyTextBlockStyle}" Opacity="0.75" />
-        <ui:InfoBar Margin="0,16,0,0"
-                    IsOpen="True"
-                    IsClosable="False"
-                    Severity="Informational"
-                    Title="Not built yet"
-                    Message="This screen arrives in stage 2 of the build plan." />
-    </StackPanel>
+    <UserControl.Styles>
+        <Style Selector="Border.card">
+            <Setter Property="Background" Value="{DynamicResource CardBackgroundFillColorDefaultBrush}" />
+            <Setter Property="BorderBrush" Value="{DynamicResource CardStrokeColorDefaultBrush}" />
+            <Setter Property="BorderThickness" Value="1" />
+            <Setter Property="CornerRadius" Value="8" />
+            <Setter Property="Padding" Value="20" />
+        </Style>
+        <Style Selector="Border.memberRow">
+            <Setter Property="CornerRadius" Value="6" />
+            <Setter Property="Padding" Value="8,6" />
+            <Setter Property="Background" Value="Transparent" />
+        </Style>
+        <Style Selector="Border.memberRow:pointerover">
+            <Setter Property="Background" Value="{DynamicResource SubtleFillColorSecondaryBrush}" />
+        </Style>
+    </UserControl.Styles>
+
+    <ScrollViewer>
+        <StackPanel Margin="32,24" Spacing="16" MaxWidth="760" HorizontalAlignment="Left">
+            <StackPanel Spacing="4">
+                <TextBlock Text="{Binding Title}" Theme="{StaticResource TitleTextBlockStyle}" />
+                <TextBlock Text="{Binding Description}" Theme="{StaticResource BodyTextBlockStyle}" Opacity="0.75" />
+            </StackPanel>
+
+            <ui:InfoBar IsOpen="{Binding HasLoadWarning}"
+                        IsClosable="False"
+                        Severity="Warning"
+                        Title="Settings reset"
+                        Message="{Binding LoadWarning}" />
+
+            <!-- Family members -->
+            <Border Classes="card">
+                <StackPanel Spacing="12">
+                    <StackPanel Spacing="2">
+                        <TextBlock Text="Family members" Theme="{StaticResource SubtitleTextBlockStyle}" />
+                        <TextBlock Text="People you track spending for. They appear in the expense form, filters and per-member charts."
+                                   TextWrapping="Wrap" Opacity="0.75" />
+                    </StackPanel>
+
+                    <Grid ColumnDefinitions="*,Auto" Margin="0,4,0,0">
+                        <TextBox Text="{Binding NewMemberName}"
+                                 Watermark="Name, e.g. Ammi"
+                                 MaxLength="{x:Static svc:SettingsService.MaxMemberNameLength}">
+                            <TextBox.KeyBindings>
+                                <KeyBinding Gesture="Enter" Command="{Binding AddMemberCommand}" />
+                            </TextBox.KeyBindings>
+                        </TextBox>
+                        <Button Grid.Column="1" Margin="8,0,0,0" Classes="accent"
+                                Command="{Binding AddMemberCommand}">
+                            <StackPanel Orientation="Horizontal" Spacing="6">
+                                <ui:SymbolIcon Symbol="Add" FontSize="16" />
+                                <TextBlock Text="Add member" />
+                            </StackPanel>
+                        </Button>
+                    </Grid>
+
+                    <ui:InfoBar IsOpen="{Binding HasError}"
+                                IsClosable="False"
+                                Severity="Error"
+                                Message="{Binding ErrorMessage}" />
+
+                    <TextBlock Text="No family members yet. Add the first one above."
+                               IsVisible="{Binding !HasMembers}"
+                               Opacity="0.6" Margin="0,4" />
+
+                    <ItemsControl ItemsSource="{Binding Members}" IsVisible="{Binding HasMembers}">
+                        <ItemsControl.ItemsPanel>
+                            <ItemsPanelTemplate>
+                                <StackPanel Spacing="2" />
+                            </ItemsPanelTemplate>
+                        </ItemsControl.ItemsPanel>
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate x:DataType="vm:FamilyMemberItemViewModel">
+                                <Border Classes="memberRow">
+                                    <Grid ColumnDefinitions="Auto,*,Auto" MinHeight="36">
+                                        <!-- Avatar -->
+                                        <Border Width="32" Height="32" CornerRadius="16"
+                                                Background="{DynamicResource AccentFillColorDefaultBrush}">
+                                            <TextBlock Text="{Binding Initial}"
+                                                       HorizontalAlignment="Center" VerticalAlignment="Center"
+                                                       FontWeight="SemiBold"
+                                                       Foreground="{DynamicResource TextOnAccentFillColorPrimaryBrush}" />
+                                        </Border>
+
+                                        <TextBlock Grid.Column="1" Margin="12,0" VerticalAlignment="Center"
+                                                   Text="{Binding Name}"
+                                                   IsVisible="{Binding !IsEditing}" />
+                                        <TextBox Grid.Column="1" Margin="12,0" VerticalAlignment="Center"
+                                                 Text="{Binding EditName}"
+                                                 IsVisible="{Binding IsEditing}"
+                                                 MaxLength="{x:Static svc:SettingsService.MaxMemberNameLength}"
+                                                 views:TextBoxFocus.FocusWhenVisible="True">
+                                            <TextBox.KeyBindings>
+                                                <KeyBinding Gesture="Enter" Command="{Binding CommitEditCommand}" />
+                                                <KeyBinding Gesture="Escape" Command="{Binding CancelEditCommand}" />
+                                            </TextBox.KeyBindings>
+                                        </TextBox>
+
+                                        <!-- Normal row actions -->
+                                        <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="4"
+                                                    IsVisible="{Binding !IsEditing}">
+                                            <Button Theme="{StaticResource TransparentButton}"
+                                                    Command="{Binding BeginEditCommand}"
+                                                    ToolTip.Tip="Rename"
+                                                    AutomationProperties.Name="Rename">
+                                                <ui:SymbolIcon Symbol="Edit" FontSize="16" />
+                                            </Button>
+                                            <Button Theme="{StaticResource TransparentButton}"
+                                                    Command="{Binding RemoveCommand}"
+                                                    ToolTip.Tip="Remove"
+                                                    AutomationProperties.Name="Remove">
+                                                <ui:SymbolIcon Symbol="Delete" FontSize="16" />
+                                            </Button>
+                                        </StackPanel>
+
+                                        <!-- Rename actions -->
+                                        <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="4"
+                                                    IsVisible="{Binding IsEditing}">
+                                            <Button Classes="accent"
+                                                    Command="{Binding CommitEditCommand}"
+                                                    ToolTip.Tip="Save name"
+                                                    AutomationProperties.Name="Save name">
+                                                <ui:SymbolIcon Symbol="Accept" FontSize="16" />
+                                            </Button>
+                                            <Button Command="{Binding CancelEditCommand}"
+                                                    ToolTip.Tip="Cancel"
+                                                    AutomationProperties.Name="Cancel rename">
+                                                <ui:SymbolIcon Symbol="Dismiss" FontSize="16" />
+                                            </Button>
+                                        </StackPanel>
+                                    </Grid>
+                                </Border>
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+                </StackPanel>
+            </Border>
+
+            <SelectableTextBlock Opacity="0.6" FontSize="12" TextWrapping="Wrap">
+                <Run Text="Settings are saved automatically to " />
+                <Run Text="{Binding SettingsFilePath}" />
+            </SelectableTextBlock>
+        </StackPanel>
+    </ScrollViewer>
 </UserControl>
