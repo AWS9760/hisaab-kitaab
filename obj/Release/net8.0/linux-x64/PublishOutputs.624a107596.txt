@@ -1,0 +1,4 @@
+C:\Users\AWS\AppData\Local\Temp\claude\D--Uni-Work-Programing-Language-Stuff-Personal-Projects-Hisaab-Kitaab\b30a42a3-882e-485d-bc6b-401d8a645d95\scratchpad\pub-linux\HisaabKitaab.pdb
+C:\Users\AWS\AppData\Local\Temp\claude\D--Uni-Work-Programing-Language-Stuff-Personal-Projects-Hisaab-Kitaab\b30a42a3-882e-485d-bc6b-401d8a645d95\scratchpad\pub-linux\libHarfBuzzSharp.so
+C:\Users\AWS\AppData\Local\Temp\claude\D--Uni-Work-Programing-Language-Stuff-Personal-Projects-Hisaab-Kitaab\b30a42a3-882e-485d-bc6b-401d8a645d95\scratchpad\pub-linux\libSkiaSharp.so
+C:\Users\AWS\AppData\Local\Temp\claude\D--Uni-Work-Programing-Language-Stuff-Personal-Projects-Hisaab-Kitaab\b30a42a3-882e-485d-bc6b-401d8a645d95\scratchpad\pub-linux\HisaabKitaab

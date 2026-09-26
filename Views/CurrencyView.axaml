@@ -1,0 +1,24 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             xmlns:ui="using:FluentAvalonia.UI.Controls"
+             xmlns:vm="using:HisaabKitaab.ViewModels"
+             mc:Ignorable="d" d:DesignWidth="900" d:DesignHeight="600"
+             x:Class="HisaabKitaab.Views.CurrencyView"
+             x:DataType="vm:CurrencyViewModel">
+    <Design.DataContext>
+        <vm:CurrencyViewModel />
+    </Design.DataContext>
+
+    <StackPanel Margin="32,24" Spacing="8">
+        <TextBlock Text="{Binding Title}" Theme="{StaticResource TitleTextBlockStyle}" />
+        <TextBlock Text="{Binding Description}" Theme="{StaticResource BodyTextBlockStyle}" Opacity="0.75" />
+        <ui:InfoBar Margin="0,16,0,0"
+                    IsOpen="True"
+                    IsClosable="False"
+                    Severity="Informational"
+                    Title="Not built yet"
+                    Message="This screen arrives in stage 7 of the build plan." />
+    </StackPanel>
+</UserControl>
