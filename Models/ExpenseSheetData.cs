@@ -13,11 +13,13 @@ public record SheetProblem(string SheetName, int RowNumber, string Message)
 /// <summary>
 /// Everything read from one month's Expenses sheet.
 /// </summary>
+/// <param name="Error">Set when the whole file couldn't be read (e.g. not an Excel file).</param>
 public record ExpenseSheetData(
     YearMonth Month,
     bool FileExists,
     IReadOnlyList<Expense> Expenses,
-    IReadOnlyList<SheetProblem> Problems);
+    IReadOnlyList<SheetProblem> Problems,
+    string? Error = null);
 
 /// <summary>
 /// Outcome of renaming a family member across a year's workbooks.

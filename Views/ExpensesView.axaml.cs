@@ -11,6 +11,7 @@ namespace HisaabKitaab.Views;
 public partial class ExpensesView : UserControl
 {
     private ExpensesViewModel? _vm;
+    private TopLevel? _topLevel;
 
     public ExpensesView()
     {
@@ -20,6 +21,23 @@ public partial class ExpensesView : UserControl
         // on key-up, so saving any earlier would miss the amount just typed.
         // handledEventsToo because NumberBox marks the event handled.
         EntryForm.AddHandler(KeyUpEvent, OnEntryKeyUp, RoutingStrategies.Bubble, handledEventsToo: true);
+    }
+
+    protected override void OnDetachedFromVisualTree(VisualTreeAttachmentEventArgs e)
+    {
+        base.OnDetachedFromVisualTree(e);
+        _topLevel?.RemoveHandler(KeyDownEvent, OnPageKeyDown);
+        _topLevel = null;
+    }
+
+    private void OnPageKeyDown(object? sender, KeyEventArgs e)
+    {
+        if (e.Key == Key.F && e.KeyModifiers == KeyModifiers.Control)
+        {
+            SearchBox.Focus();
+            SearchBox.SelectAll();
+            e.Handled = true;
+        }
     }
 
     protected override void OnDataContextChanged(EventArgs e)
@@ -39,6 +57,12 @@ public partial class ExpensesView : UserControl
     {
         base.OnAttachedToVisualTree(e);
         OnEntryFocusRequested(this, EventArgs.Empty);
+
+        // Ctrl+F jumps to search. Listened for on the window rather than this page,
+        // because focus can end up outside the page (e.g. when the button that had
+        // it is disabled during a load) and the shortcut should still work.
+        _topLevel = TopLevel.GetTopLevel(this);
+        _topLevel?.AddHandler(KeyDownEvent, OnPageKeyDown, RoutingStrategies.Tunnel);
     }
 
     private void OnEntryFocusRequested(object? sender, EventArgs e)

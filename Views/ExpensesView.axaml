@@ -56,7 +56,7 @@
         </Style>
     </UserControl.Styles>
 
-    <Grid RowDefinitions="Auto,Auto,Auto,Auto,*" Margin="32,24,32,16">
+    <Grid RowDefinitions="Auto,Auto,Auto,Auto,Auto,Auto,*" Margin="32,24,32,16">
 
         <!-- Header: title and month navigation -->
         <Grid ColumnDefinitions="*,Auto" Margin="0,0,0,16">
@@ -71,7 +71,7 @@
                         ToolTip.Tip="Previous month" AutomationProperties.Name="Previous month">
                     <ui:SymbolIcon Symbol="ChevronLeft" FontSize="16" />
                 </Button>
-                <TextBlock Text="{Binding MonthTitle}" Theme="{StaticResource SubtitleTextBlockStyle}"
+                <TextBlock Text="{Binding PeriodTitle}" Theme="{StaticResource SubtitleTextBlockStyle}"
                            MinWidth="180" TextAlignment="Center" VerticalAlignment="Center" />
                 <Button Theme="{StaticResource TransparentButton}" Command="{Binding NextMonthCommand}"
                         ToolTip.Tip="Next month" AutomationProperties.Name="Next month">
@@ -123,15 +123,10 @@
             <ui:InfoBar.ActionButton>
                 <Button Content="Open in Excel" Command="{Binding OpenWorkbookCommand}" />
             </ui:InfoBar.ActionButton>
-            <ItemsControl ItemsSource="{Binding Problems}" Margin="0,0,0,8">
+            <ItemsControl ItemsSource="{Binding ProblemLines}" Margin="0,0,0,8">
                 <ItemsControl.ItemTemplate>
-                    <DataTemplate x:DataType="m:SheetProblem">
-                        <TextBlock FontSize="12" TextWrapping="Wrap">
-                            <Run Text="Row" />
-                            <Run Text="{Binding RowNumber}" FontWeight="SemiBold" />
-                            <Run Text="—" />
-                            <Run Text="{Binding Message}" />
-                        </TextBlock>
+                    <DataTemplate x:DataType="x:String">
+                        <TextBlock FontSize="12" TextWrapping="Wrap" Text="{Binding}" />
                     </DataTemplate>
                 </ItemsControl.ItemTemplate>
             </ItemsControl>
@@ -250,12 +245,135 @@
             </StackPanel>
         </Border>
 
-        <!-- The month's expenses, newest first -->
-        <TextBlock Grid.Row="4" Text="{Binding EmptyText}" Opacity="0.6"
+        <!-- Search box and filter toggle -->
+        <Grid Grid.Row="4" ColumnDefinitions="*,Auto,Auto" Margin="0,0,0,8">
+            <TextBox x:Name="SearchBox"
+                     Text="{Binding SearchText}"
+                     Watermark="Search notes, categories, people, amounts…  (Ctrl+F)"
+                     Classes="clearButton"
+                     AutomationProperties.Name="Search expenses">
+                <TextBox.InnerLeftContent>
+                    <ui:SymbolIcon Symbol="Find" FontSize="16" Margin="10,0,2,0" Opacity="0.7" />
+                </TextBox.InnerLeftContent>
+            </TextBox>
+            <ToggleButton Grid.Column="1" Margin="8,0,0,0"
+                          IsChecked="{Binding IsFilterPanelOpen}"
+                          AutomationProperties.Name="Show filters">
+                <StackPanel Orientation="Horizontal" Spacing="6">
+                    <ui:SymbolIcon Symbol="Filter" FontSize="16" />
+                    <TextBlock Text="{Binding FilterButtonText}" />
+                </StackPanel>
+            </ToggleButton>
+            <Button Grid.Column="2" Margin="8,0,0,0"
+                    Content="Clear filters"
+                    Command="{Binding ClearFiltersCommand}"
+                    IsVisible="{Binding HasActiveFilters}" />
+        </Grid>
+
+        <!-- Filters: period, people, categories, payment method, amount -->
+        <Border Grid.Row="5" Classes="card" Padding="16,12" Margin="0,0,0,8"
+                IsVisible="{Binding IsFilterPanelOpen}">
+            <StackPanel Spacing="12">
+                <WrapPanel>
+                    <StackPanel Margin="0,0,12,0">
+                        <TextBlock Classes="caption" Text="From" />
+                        <CalendarDatePicker SelectedDate="{Binding RangeFrom}" Width="170"
+                                            SelectedDateFormat="Custom" CustomDateFormatString="d MMM yyyy"
+                                            AutomationProperties.Name="From date" />
+                    </StackPanel>
+                    <StackPanel Margin="0,0,16,0">
+                        <TextBlock Classes="caption" Text="To" />
+                        <CalendarDatePicker SelectedDate="{Binding RangeTo}" Width="170"
+                                            SelectedDateFormat="Custom" CustomDateFormatString="d MMM yyyy"
+                                            AutomationProperties.Name="To date" />
+                    </StackPanel>
+                    <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Bottom">
+                        <Button Content="This month" Command="{Binding GoToThisMonthCommand}" />
+                        <Button Content="Last 30 days" Command="{Binding ShowLast30DaysCommand}" />
+                        <Button Content="This year" Command="{Binding ShowThisYearCommand}" />
+                    </StackPanel>
+                </WrapPanel>
+                <TextBlock Text="{Binding RangeError}" IsVisible="{Binding HasRangeError}"
+                           Foreground="{DynamicResource SystemFillColorCriticalBrush}" />
+
+                <WrapPanel>
+                    <StackPanel Margin="0,0,12,8">
+                        <TextBlock Classes="caption" Text="Family member" />
+                        <DropDownButton MinWidth="170" Content="{Binding MemberFilterText}"
+                                        AutomationProperties.Name="Filter by family member">
+                            <DropDownButton.Flyout>
+                                <Flyout Placement="BottomEdgeAlignedLeft">
+                                    <ScrollViewer MaxHeight="320">
+                                        <ItemsControl ItemsSource="{Binding MemberChoices}">
+                                            <ItemsControl.ItemTemplate>
+                                                <DataTemplate x:DataType="vm:FilterChoiceViewModel">
+                                                    <CheckBox Content="{Binding Label}" IsChecked="{Binding IsSelected}" />
+                                                </DataTemplate>
+                                            </ItemsControl.ItemTemplate>
+                                        </ItemsControl>
+                                    </ScrollViewer>
+                                </Flyout>
+                            </DropDownButton.Flyout>
+                        </DropDownButton>
+                    </StackPanel>
+                    <StackPanel Margin="0,0,12,8">
+                        <TextBlock Classes="caption" Text="Category" />
+                        <DropDownButton MinWidth="170" Content="{Binding CategoryFilterText}"
+                                        AutomationProperties.Name="Filter by category">
+                            <DropDownButton.Flyout>
+                                <Flyout Placement="BottomEdgeAlignedLeft">
+                                    <ScrollViewer MaxHeight="320">
+                                        <ItemsControl ItemsSource="{Binding CategoryChoices}">
+                                            <ItemsControl.ItemTemplate>
+                                                <DataTemplate x:DataType="vm:FilterChoiceViewModel">
+                                                    <CheckBox Content="{Binding Label}" IsChecked="{Binding IsSelected}" />
+                                                </DataTemplate>
+                                            </ItemsControl.ItemTemplate>
+                                        </ItemsControl>
+                                    </ScrollViewer>
+                                </Flyout>
+                            </DropDownButton.Flyout>
+                        </DropDownButton>
+                    </StackPanel>
+                    <StackPanel Margin="0,0,12,8">
+                        <TextBlock Classes="caption" Text="Paid with" />
+                        <DropDownButton MinWidth="170" Content="{Binding PaymentFilterText}"
+                                        AutomationProperties.Name="Filter by payment method">
+                            <DropDownButton.Flyout>
+                                <Flyout Placement="BottomEdgeAlignedLeft">
+                                    <ItemsControl ItemsSource="{Binding PaymentChoices}">
+                                        <ItemsControl.ItemTemplate>
+                                            <DataTemplate x:DataType="vm:FilterChoiceViewModel">
+                                                <CheckBox Content="{Binding Label}" IsChecked="{Binding IsSelected}" />
+                                            </DataTemplate>
+                                        </ItemsControl.ItemTemplate>
+                                    </ItemsControl>
+                                </Flyout>
+                            </DropDownButton.Flyout>
+                        </DropDownButton>
+                    </StackPanel>
+                    <StackPanel Margin="0,0,12,8">
+                        <TextBlock Classes="caption" Text="Amount (₨)" />
+                        <StackPanel Orientation="Horizontal" Spacing="6">
+                            <ui:NumberBox Value="{Binding MinAmount, Mode=TwoWay}" Width="110"
+                                          PlaceholderText="Min" SpinButtonPlacementMode="Hidden"
+                                          AutomationProperties.Name="Minimum amount" />
+                            <TextBlock Text="to" VerticalAlignment="Center" Opacity="0.7" />
+                            <ui:NumberBox Value="{Binding MaxAmount, Mode=TwoWay}" Width="110"
+                                          PlaceholderText="Max" SpinButtonPlacementMode="Hidden"
+                                          AutomationProperties.Name="Maximum amount" />
+                        </StackPanel>
+                    </StackPanel>
+                </WrapPanel>
+            </StackPanel>
+        </Border>
+
+        <!-- The period's expenses (after filters), newest first -->
+        <TextBlock Grid.Row="6" Text="{Binding EmptyText}" Opacity="0.6"
                    HorizontalAlignment="Center" Margin="0,32"
                    IsVisible="{Binding !HasRows}" />
 
-        <DataGrid Grid.Row="4" x:Name="ExpensesGrid"
+        <DataGrid Grid.Row="6" x:Name="ExpensesGrid"
                   ItemsSource="{Binding Rows}"
                   IsVisible="{Binding HasRows}"
                   IsReadOnly="True"
