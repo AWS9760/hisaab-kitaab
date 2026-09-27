@@ -66,6 +66,13 @@ internal sealed class ExpensesSheet
     /// </summary>
     public bool IsModified { get; private set; }
 
+    // Where these columns currently are, for formulas on other sheets.
+    public int DateColumn => _cols[Col.Date];
+
+    public int AmountColumn => _cols[Col.Amount];
+
+    public int PaymentColumn => _cols[Col.PaymentMethod];
+
     public static ExpensesSheet? Find(XLWorkbook workbook, YearMonth month) =>
         workbook.TryGetWorksheet(SheetName, out var ws) ? new ExpensesSheet(ws, month) : null;
 

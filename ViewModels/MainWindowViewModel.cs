@@ -10,7 +10,7 @@ public partial class MainWindowViewModel : ViewModelBase
     private readonly SettingsService _settings;
     private readonly IDialogService _dialogs;
     private readonly ExcelService _excel;
-    private readonly ExpenseStore _store;
+    private readonly WorkbookStore _store;
     private readonly ILauncherService _launcher;
 
     [ObservableProperty]
@@ -24,7 +24,7 @@ public partial class MainWindowViewModel : ViewModelBase
         _settings = settings;
         _dialogs = dialogs;
         _excel = excel;
-        _store = new ExpenseStore(excel);
+        _store = new WorkbookStore(excel);
         _launcher = launcher;
 
         _currentPage = GetOrCreatePage(AppPage.Dashboard);
@@ -46,7 +46,7 @@ public partial class MainWindowViewModel : ViewModelBase
             {
                 AppPage.Dashboard => new DashboardViewModel(),
                 AppPage.Expenses => new ExpensesViewModel(_store, _settings, _dialogs, _launcher),
-                AppPage.BankCash => new BankCashViewModel(),
+                AppPage.BankCash => new BankCashViewModel(new BankCashService(_store), _settings, _dialogs, _launcher),
                 AppPage.Currency => new CurrencyViewModel(),
                 AppPage.CreditCard => new CreditCardViewModel(),
                 AppPage.Zakat => new ZakatViewModel(),

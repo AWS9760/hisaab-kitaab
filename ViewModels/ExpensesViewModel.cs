@@ -18,7 +18,7 @@ public partial class ExpensesViewModel : PageViewModelBase
     /// </summary>
     public const int MaxRangeMonths = 120;
 
-    private readonly ExpenseStore _store;
+    private readonly WorkbookStore _store;
     private readonly ExcelService _excel;
     private readonly SettingsService _settings;
     private readonly IDialogService _dialogs;
@@ -83,7 +83,7 @@ public partial class ExpensesViewModel : PageViewModelBase
         nameof(NextMonthCommand), nameof(GoToThisMonthCommand), nameof(ShowLast30DaysCommand), nameof(ShowThisYearCommand))]
     private bool _isBusy;
 
-    public ExpensesViewModel(ExpenseStore store, SettingsService settings, IDialogService dialogs,
+    public ExpensesViewModel(WorkbookStore store, SettingsService settings, IDialogService dialogs,
         ILauncherService launcher, TimeProvider? clock = null)
     {
         _store = store;

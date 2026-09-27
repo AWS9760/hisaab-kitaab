@@ -19,4 +19,15 @@ public static class Pkr
         var text = $"{Symbol} {abs.ToString(digits, CultureInfo.InvariantCulture)}";
         return amount < 0 ? "-" + text : text;
     }
+
+    /// <summary>
+    /// Like <see cref="Format"/> but always shows the sign: "+₨ 1,000", "-₨ 250".
+    /// Zero comes back empty, which reads better in a column of changes.
+    /// </summary>
+    public static string FormatChange(decimal amount) => amount switch
+    {
+        0 => string.Empty,
+        > 0 => "+" + Format(amount),
+        _ => Format(amount),
+    };
 }

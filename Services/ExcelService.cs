@@ -186,6 +186,140 @@ public class ExcelService
         Save(workbook, path);
     }
 
+    // ---- Bank & Cash --------------------------------------------------------
+
+    /// <summary>
+    /// Reads the month's Bank &amp; Cash sheet. A month with no file (or a file
+    /// from before this sheet existed) returns an empty log with carried-forward openings.
+    /// </summary>
+    public BankCashSheetData LoadBankCash(YearMonth month)
+    {
+        var path = GetMonthFilePath(month);
+        if (!File.Exists(path))
+            return BankCashSheetData.Empty(month);
+
+        using var workbook = Open(path);
+        var sheet = BankCashSheet.Find(workbook, month);
+        if (sheet is null)
+            return BankCashSheetData.Empty(month, fileExists: true);
+
+        var data = sheet.Read();
+        if (sheet.IsModified)
+        {
+            // New IDs for rows added by hand; see LoadExpenses.
+            try
+            {
+                Save(workbook, path);
+            }
+            catch (WorkbookLockedException)
+            {
+            }
+        }
+
+        return data;
+    }
+
+    public BankCashEntry AddBankCashEntry(BankCashEntry entry)
+    {
+        entry = Normalize(entry);
+        if (entry.Id == Guid.Empty)
+            entry = entry with { Id = Guid.NewGuid() };
+
+        var month = YearMonth.Of(entry.Date);
+        var path = GetMonthFilePath(month);
+        using var workbook = File.Exists(path) ? Open(path) : CreateWorkbook(month);
+        BankCashSheet.GetOrCreate(workbook, month).Insert(entry);
+        Save(workbook, path);
+        return entry;
+    }
+
+    /// <exception cref="KeyNotFoundException">The entry is no longer in the file.</exception>
+    public BankCashEntry UpdateBankCashEntry(YearMonth originalMonth, BankCashEntry entry)
+    {
+        entry = Normalize(entry);
+        if (entry.Id == Guid.Empty)
+            throw new ArgumentException("Entry has no ID.", nameof(entry));
+
+        var newMonth = YearMonth.Of(entry.Date);
+        if (newMonth == originalMonth)
+        {
+            var path = GetMonthFilePath(originalMonth);
+            using var workbook = OpenExisting(path);
+            if (!BankCashSheet.GetOrCreate(workbook, originalMonth).Update(entry))
+                throw EntryNotFound(entry.Id, originalMonth);
+            Save(workbook, path);
+            return entry;
+        }
+
+        // Same approach as moving an expense between months.
+        if (LoadBankCash(originalMonth).Entries.All(e => e.Id != entry.Id))
+            throw EntryNotFound(entry.Id, originalMonth);
+        AddBankCashEntry(entry);
+        try
+        {
+            DeleteBankCashEntry(originalMonth, entry.Id);
+        }
+        catch
+        {
+            try
+            {
+                DeleteBankCashEntry(newMonth, entry.Id);
+            }
+            catch (Exception ex) when (ex is IOException or KeyNotFoundException)
+            {
+            }
+
+            throw;
+        }
+
+        return entry;
+    }
+
+    /// <exception cref="KeyNotFoundException">The entry is no longer in the file.</exception>
+    public void DeleteBankCashEntry(YearMonth month, Guid id)
+    {
+        var path = GetMonthFilePath(month);
+        using var workbook = OpenExisting(path);
+        if (!BankCashSheet.GetOrCreate(workbook, month).Delete(id))
+            throw EntryNotFound(id, month);
+        Save(workbook, path);
+    }
+
+    /// <summary>
+    /// Writes an opening balance. With <paramref name="isManual"/> true it's
+    /// the user's own figure; false marks it as carried forward from last month.
+    /// Creates the workbook if needed.
+    /// </summary>
+    public void SetOpeningBalance(YearMonth month, Account account, decimal value, bool isManual)
+    {
+        if (Math.Abs(value) >= MaxAmount)
+            throw new ArgumentException("Amount is too large.", nameof(value));
+
+        var path = GetMonthFilePath(month);
+        using var workbook = File.Exists(path) ? Open(path) : CreateWorkbook(month);
+        BankCashSheet.GetOrCreate(workbook, month).SetOpening(account, Math.Round(value, 2, MidpointRounding.AwayFromZero), isManual);
+        Save(workbook, path);
+    }
+
+    private static BankCashEntry Normalize(BankCashEntry entry)
+    {
+        if (entry.Amount <= 0)
+            throw new ArgumentException("Amount must be more than zero.", nameof(entry));
+        if (entry.Amount >= MaxAmount)
+            throw new ArgumentException("Amount is too large.", nameof(entry));
+        if (!Enum.IsDefined(entry.Type))
+            throw new ArgumentException("Unknown entry type.", nameof(entry));
+
+        return entry with
+        {
+            Amount = Math.Round(entry.Amount, 2, MidpointRounding.AwayFromZero),
+            Note = entry.Note?.Trim() ?? string.Empty,
+        };
+    }
+
+    private static KeyNotFoundException EntryNotFound(Guid id, YearMonth month) =>
+        new($"That transaction is no longer in {month.FileName}. It may have been changed in Excel; reload and try again. (ID {id})");
+
     /// <summary>
     /// Changes the family member name on every expense in <paramref name="year"/>'s
     /// workbooks. Files that can't be updated (e.g. open in Excel) are reported
@@ -310,6 +444,8 @@ public class ExcelService
     private static void Save(XLWorkbook workbook, string path)
     {
         WriteSchemaVersion(workbook);
+        if (YearMonth.TryParseFileName(Path.GetFileName(path), out var month))
+            CompleteMonthWorkbook(workbook, month);
         Directory.CreateDirectory(Path.GetDirectoryName(path)!);
 
         // Save beside the real file, then swap it in, so a failed save never
@@ -317,9 +453,19 @@ public class ExcelService
         var tempPath = Path.Combine(Path.GetDirectoryName(path)!, $"~{Path.GetFileName(path)}.{Guid.NewGuid():N}.tmp");
         try
         {
-            // Via a stream because ClosedXML picks the format from the file extension.
-            using (var stream = new FileStream(tempPath, FileMode.CreateNew, FileAccess.ReadWrite, FileShare.None))
-                workbook.SaveAs(stream);
+            try
+            {
+                // Store the formulas' results too, so programs that don't
+                // recalculate on open (LibreOffice by default) show real numbers.
+                WriteTo(tempPath, workbook, evaluateFormulas: true);
+            }
+            catch (Exception ex) when (ex is not IOException and not UnauthorizedAccessException)
+            {
+                // A formula ClosedXML can't evaluate shouldn't stop the save; Excel recalculates on open anyway.
+                TryDelete(tempPath);
+                WriteTo(tempPath, workbook, evaluateFormulas: false);
+            }
+
             File.Move(tempPath, path, overwrite: true);
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
@@ -327,6 +473,26 @@ public class ExcelService
             TryDelete(tempPath);
             throw new WorkbookLockedException(path, ex);
         }
+    }
+
+    private static void WriteTo(string tempPath, XLWorkbook workbook, bool evaluateFormulas)
+    {
+        // Via a stream because ClosedXML picks the format from the file extension.
+        using var stream = new FileStream(tempPath, FileMode.CreateNew, FileAccess.ReadWrite, FileShare.None);
+        workbook.SaveAs(stream, new SaveOptions { EvaluateFormulasBeforeSaving = evaluateFormulas });
+    }
+
+    /// <summary>
+    /// Makes sure a monthly workbook has all its sheets and that the Bank &amp;
+    /// Cash formulas point at the Expenses sheet's current columns.
+    /// </summary>
+    private static void CompleteMonthWorkbook(XLWorkbook workbook, YearMonth month)
+    {
+        var expenses = ExpensesSheet.GetOrCreate(workbook, month);
+        BankCashSheet.GetOrCreate(workbook, month).RefreshFormulas(expenses);
+
+        // Excel recalculates everything when the file is opened.
+        workbook.FullCalculationOnLoad = true;
     }
 
     private static int ReadSchemaVersion(XLWorkbook workbook)

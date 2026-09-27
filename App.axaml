@@ -23,5 +23,6 @@
         <sty:FluentAvaloniaTheme PreferSystemTheme="True" PreferUserAccentColor="True" />
         <StyleInclude Source="avares://Avalonia.Controls.DataGrid/Themes/Fluent.xaml" />
         <StyleInclude Source="avares://HisaabKitaab/Styles/DataGrid.axaml" />
+        <StyleInclude Source="avares://HisaabKitaab/Styles/Common.axaml" />
     </Application.Styles>
 </Application>

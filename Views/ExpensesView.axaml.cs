@@ -2,8 +2,6 @@ using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Input;
 using Avalonia.Interactivity;
-using Avalonia.Threading;
-using Avalonia.VisualTree;
 using HisaabKitaab.ViewModels;
 
 namespace HisaabKitaab.Views;
@@ -65,33 +63,11 @@ public partial class ExpensesView : UserControl
         _topLevel?.AddHandler(KeyDownEvent, OnPageKeyDown, RoutingStrategies.Tunnel);
     }
 
-    private void OnEntryFocusRequested(object? sender, EventArgs e)
-    {
-        // Posted so it runs after the form's bindings have updated.
-        Dispatcher.UIThread.Post(() =>
-        {
-            // NumberBox itself isn't focusable; its inner TextBox is. If the cursor is
-            // already there (the user started typing the next amount while the last
-            // one saved), leave it alone rather than selecting what they typed.
-            if (AmountBox.GetVisualDescendants().OfType<TextBox>().FirstOrDefault() is { IsFocused: false } text)
-            {
-                text.Focus();
-                text.SelectAll();
-            }
-        }, DispatcherPriority.Loaded);
-    }
+    private void OnEntryFocusRequested(object? sender, EventArgs e) => FormHelpers.FocusNumberBox(AmountBox);
 
     private void OnEntryKeyUp(object? sender, KeyEventArgs e)
     {
-        if (_vm is null || e.Source is not Visual source)
-            return;
-
-        // Enter/Escape in a dropdown belong to the dropdown, and a focused
-        // button already acts on Enter by itself (saving here too would add twice).
-        if (source.FindAncestorOfType<ComboBox>(includeSelf: true) is not null
-            || source.FindAncestorOfType<Button>(includeSelf: true) is not null)
-            return;
-        if (source.FindAncestorOfType<CalendarDatePicker>(includeSelf: true) is { IsDropDownOpen: true })
+        if (_vm is null || !FormHelpers.FormShouldHandleKey(e.Source))
             return;
 
         if (e.Key == Key.Enter && _vm.SaveEntryCommand.CanExecute(null))
