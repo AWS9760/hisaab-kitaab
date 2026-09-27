@@ -1,5 +1,6 @@
 <Styles xmlns="https://github.com/avaloniaui"
-        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:ui="using:FluentAvalonia.UI.Controls">
     <!-- Styles shared by the pages: cards, small captions, and the pill-style option picker. -->
     <Style Selector="Border.card">
         <Setter Property="Background" Value="{DynamicResource CardBackgroundFillColorDefaultBrush}" />
@@ -43,6 +44,11 @@
     <Style Selector="ListBox.segmented ListBoxItem:selected:pointerover /template/ ContentPresenter#PART_ContentPresenter">
         <Setter Property="Background" Value="{DynamicResource AccentFillColorSecondaryBrush}" />
         <Setter Property="Foreground" Value="{DynamicResource TextOnAccentFillColorPrimaryBrush}" />
+    </Style>
+    <!-- Tab goes from one number box to the next rather than stopping on each
+         box's up/down buttons (they still work with the mouse and arrow keys). -->
+    <Style Selector="ui|NumberBox /template/ RepeatButton">
+        <Setter Property="IsTabStop" Value="False" />
     </Style>
     <Style Selector="TextBlock.negative">
         <Setter Property="Foreground" Value="{DynamicResource SystemFillColorCriticalBrush}" />

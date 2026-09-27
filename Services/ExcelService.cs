@@ -301,6 +301,36 @@ public class ExcelService
         Save(workbook, path);
     }
 
+    // ---- Currency Denominations -----------------------------------------------
+
+    /// <summary>
+    /// Reads the month's cash count. A month with no file, or a file from
+    /// before this sheet existed, returns an empty count.
+    /// </summary>
+    public CurrencySheetData LoadCurrencyCount(YearMonth month)
+    {
+        var path = GetMonthFilePath(month);
+        if (!File.Exists(path))
+            return CurrencySheetData.None(month);
+
+        using var workbook = Open(path);
+        return CurrencySheet.Find(workbook, month)?.Read() ?? CurrencySheetData.None(month, fileExists: true);
+    }
+
+    /// <summary>
+    /// Saves the month's cash count, creating the workbook if needed.
+    /// </summary>
+    public void SaveCurrencyCount(YearMonth month, CurrencyCount count)
+    {
+        if (count.Coins is < 0 || count.Coins >= MaxAmount)
+            throw new ArgumentException("Coins must be zero or more.", nameof(count));
+
+        var path = GetMonthFilePath(month);
+        using var workbook = File.Exists(path) ? Open(path) : CreateWorkbook(month);
+        CurrencySheet.GetOrCreate(workbook, month).Write(count with { Coins = Math.Round(count.Coins, 2, MidpointRounding.AwayFromZero) });
+        Save(workbook, path);
+    }
+
     private static BankCashEntry Normalize(BankCashEntry entry)
     {
         if (entry.Amount <= 0)
@@ -489,7 +519,9 @@ public class ExcelService
     private static void CompleteMonthWorkbook(XLWorkbook workbook, YearMonth month)
     {
         var expenses = ExpensesSheet.GetOrCreate(workbook, month);
-        BankCashSheet.GetOrCreate(workbook, month).RefreshFormulas(expenses);
+        var bank = BankCashSheet.GetOrCreate(workbook, month);
+        bank.RefreshFormulas(expenses);
+        CurrencySheet.GetOrCreate(workbook, month).RefreshFormulas(bank, expenses);
 
         // Excel recalculates everything when the file is opened.
         workbook.FullCalculationOnLoad = true;

@@ -33,6 +33,7 @@ public partial class MainWindowViewModel : ViewModelBase
 
     public void NavigateTo(AppPage page)
     {
+        _ = CurrentPage.OnNavigatedFromAsync();
         CurrentPage = GetOrCreatePage(page);
         CurrentPageKey = page;
         CurrentPage.OnNavigatedTo();
@@ -47,7 +48,7 @@ public partial class MainWindowViewModel : ViewModelBase
                 AppPage.Dashboard => new DashboardViewModel(),
                 AppPage.Expenses => new ExpensesViewModel(_store, _settings, _dialogs, _launcher),
                 AppPage.BankCash => new BankCashViewModel(new BankCashService(_store), _settings, _dialogs, _launcher),
-                AppPage.Currency => new CurrencyViewModel(),
+                AppPage.Currency => new CurrencyViewModel(new BankCashService(_store), _launcher),
                 AppPage.CreditCard => new CreditCardViewModel(),
                 AppPage.Zakat => new ZakatViewModel(),
                 AppPage.Settings => new SettingsViewModel(_settings, _dialogs, _excel),

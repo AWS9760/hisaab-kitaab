@@ -18,4 +18,9 @@ public abstract class PageViewModelBase : ViewModelBase
     public virtual void OnNavigatedTo()
     {
     }
+
+    /// <summary>
+    /// Called when another page is about to be shown, e.g. to save pending changes.
+    /// </summary>
+    public virtual Task OnNavigatedFromAsync() => Task.CompletedTask;
 }

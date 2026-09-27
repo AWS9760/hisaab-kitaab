@@ -204,16 +204,9 @@ internal sealed class BankCashSheet
     /// </summary>
     public void RefreshFormulas(ExpensesSheet expenses)
     {
-        var log = FirstLogRow;
-        var logEnd = log + FormulaRows;
-        string Log(int col) => $"${Letter(col)}${log}:${Letter(col)}${logEnd}";
-        string LogSum(BankCashEntryType type, string? dateCriteria = null) =>
-            $"SUMIFS({Log(ColAmount)},{Log(ColType)},\"{type.ToDisplayName()}\"{(dateCriteria is null ? "" : $",{Log(ColDate)},{dateCriteria}")})";
-
-        var exp = $"'{ExpensesSheet.SheetName}'!";
-        string Exp(int col) => $"{exp}${Letter(col)}$2:${Letter(col)}${FormulaRows * 4}";
-        string ExpSum(string method, string? dateCriteria = null) =>
-            $"SUMIFS({Exp(expenses.AmountColumn)},{Exp(expenses.PaymentColumn)},\"{method}\"{(dateCriteria is null ? "" : $",{Exp(expenses.DateColumn)},{dateCriteria}")})";
+        var f = new FormulaParts(this, expenses, qualified: false);
+        string LogSum(BankCashEntryType type, string? dateCriteria = null) => f.LogSum(type, dateCriteria);
+        string ExpSum(string method, string? dateCriteria = null) => f.ExpSum(method, dateCriteria);
 
         var o = _openingRow;
         var income = o + 2;
@@ -247,10 +240,46 @@ internal sealed class BankCashSheet
             SetFormula(row, ColBank,
                 $"$B${o}+{LogSum(BankCashEntryType.BankIncome, upTo)}+{LogSum(BankCashEntryType.Deposit, upTo)}" +
                 $"-{LogSum(BankCashEntryType.Withdrawal, upTo)}-{ExpSum("Bank", upTo)}");
-            SetFormula(row, ColCash,
-                $"$C${o}+{LogSum(BankCashEntryType.CashIncome, upTo)}+{LogSum(BankCashEntryType.Withdrawal, upTo)}" +
-                $"-{LogSum(BankCashEntryType.Deposit, upTo)}-{ExpSum("Cash", upTo)}");
+            SetFormula(row, ColCash, f.CashUpTo(upTo));
         }
+    }
+
+    /// <summary>
+    /// A formula, for use on another sheet, giving cash in hand at the end of
+    /// the day in <paramref name="dateCell"/> (a cell on that other sheet), or
+    /// the closing cash in hand if that cell is empty.
+    /// </summary>
+    public string CashOnDateFormula(ExpensesSheet expenses, string dateCell)
+    {
+        var f = new FormulaParts(this, expenses, qualified: true);
+        return $"IF({dateCell}=\"\",{f.Sheet}$C${_openingRow + 6},{f.CashUpTo($"\"<=\"&{dateCell}")})";
+    }
+
+    /// <summary>
+    /// Builds the SUMIFS pieces. With <c>qualified</c> set, references to this
+    /// sheet carry its name so the formula works from other sheets.
+    /// </summary>
+    private sealed class FormulaParts(BankCashSheet sheet, ExpensesSheet expenses, bool qualified)
+    {
+        public string Sheet { get; } = qualified ? $"'{SheetName}'!" : string.Empty;
+
+        private string Log(int col) =>
+            $"{Sheet}${Letter(col)}${sheet.FirstLogRow}:${Letter(col)}${sheet.FirstLogRow + FormulaRows}";
+
+        private static string Exp(int col) => $"'{ExpensesSheet.SheetName}'!${Letter(col)}$2:${Letter(col)}${FormulaRows * 4}";
+
+        public string LogSum(BankCashEntryType type, string? dateCriteria = null) =>
+            $"SUMIFS({Log(ColAmount)},{Log(ColType)},\"{type.ToDisplayName()}\"{(dateCriteria is null ? "" : $",{Log(ColDate)},{dateCriteria}")})";
+
+        public string ExpSum(string method, string? dateCriteria = null) =>
+            $"SUMIFS({Exp(expenses.AmountColumn)},{Exp(expenses.PaymentColumn)},\"{method}\"{(dateCriteria is null ? "" : $",{Exp(expenses.DateColumn)},{dateCriteria}")})";
+
+        /// <summary>
+        /// Opening cash plus cash in, minus cash out, up to a date.
+        /// </summary>
+        public string CashUpTo(string dateCriteria) =>
+            $"{Sheet}$C${sheet._openingRow}+{LogSum(BankCashEntryType.CashIncome, dateCriteria)}+{LogSum(BankCashEntryType.Withdrawal, dateCriteria)}" +
+            $"-{LogSum(BankCashEntryType.Deposit, dateCriteria)}-{ExpSum("Cash", dateCriteria)}";
     }
 
     private void SetFormula(int row, int col, string formula)

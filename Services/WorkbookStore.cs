@@ -15,6 +15,7 @@ public sealed class WorkbookStore
     private readonly object _lock = new();
     private readonly Dictionary<YearMonth, Entry<ExpenseSheetData>> _expenses = new();
     private readonly Dictionary<YearMonth, Entry<BankCashSheetData>> _bankCash = new();
+    private readonly Dictionary<YearMonth, Entry<CurrencySheetData>> _currency = new();
 
     private sealed record Entry<T>(T Data, FileStamp Stamp);
 
@@ -63,6 +64,15 @@ public sealed class WorkbookStore
         error => BankCashSheetData.Empty(month, fileExists: true, error));
 
     /// <summary>
+    /// The month's cash count from the Currency Denominations sheet.
+    /// </summary>
+    public CurrencySheetData LoadCurrency(YearMonth month) => Load(
+        _currency, month,
+        () => _excel.LoadCurrencyCount(month),
+        () => CurrencySheetData.None(month),
+        error => CurrencySheetData.None(month, fileExists: true, error));
+
+    /// <summary>
     /// Forget a month so the next load re-reads it, even if the file's timestamp looks unchanged.
     /// </summary>
     public void Invalidate(YearMonth month)
@@ -71,6 +81,7 @@ public sealed class WorkbookStore
         {
             _expenses.Remove(month);
             _bankCash.Remove(month);
+            _currency.Remove(month);
         }
     }
 

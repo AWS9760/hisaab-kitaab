@@ -4,21 +4,168 @@
              xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
              xmlns:ui="using:FluentAvalonia.UI.Controls"
              xmlns:vm="using:HisaabKitaab.ViewModels"
-             mc:Ignorable="d" d:DesignWidth="900" d:DesignHeight="600"
+             xmlns:views="using:HisaabKitaab.Views"
+             mc:Ignorable="d" d:DesignWidth="1000" d:DesignHeight="760"
              x:Class="HisaabKitaab.Views.CurrencyView"
              x:DataType="vm:CurrencyViewModel">
-    <Design.DataContext>
-        <vm:CurrencyViewModel />
-    </Design.DataContext>
 
-    <StackPanel Margin="32,24" Spacing="8">
-        <TextBlock Text="{Binding Title}" Theme="{StaticResource TitleTextBlockStyle}" />
-        <TextBlock Text="{Binding Description}" Theme="{StaticResource BodyTextBlockStyle}" Opacity="0.75" />
-        <ui:InfoBar Margin="0,16,0,0"
-                    IsOpen="True"
-                    IsClosable="False"
-                    Severity="Informational"
-                    Title="Not built yet"
-                    Message="This screen arrives in stage 7 of the build plan." />
-    </StackPanel>
+    <UserControl.Styles>
+        <Style Selector="Border.note">
+            <Setter Property="CornerRadius" Value="6" />
+            <Setter Property="Padding" Value="10,4" />
+            <Setter Property="BorderThickness" Value="1.5" />
+            <Setter Property="MinWidth" Value="96" />
+            <Setter Property="HorizontalAlignment" Value="Left" />
+        </Style>
+        <Style Selector="TextBlock.big">
+            <Setter Property="FontSize" Value="28" />
+            <Setter Property="FontWeight" Value="SemiBold" />
+        </Style>
+    </UserControl.Styles>
+
+    <ScrollViewer>
+        <StackPanel Margin="32,24,32,16" Spacing="12">
+
+            <!-- Header -->
+            <Grid ColumnDefinitions="*,Auto" Margin="0,0,0,4">
+                <StackPanel Spacing="4" VerticalAlignment="Center">
+                    <TextBlock Text="{Binding Title}" Theme="{StaticResource TitleTextBlockStyle}" />
+                    <TextBlock Text="{Binding Description}" Opacity="0.75" />
+                </StackPanel>
+                <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
+                    <Button Theme="{StaticResource TransparentButton}" Command="{Binding PreviousMonthCommand}"
+                            ToolTip.Tip="Previous month" AutomationProperties.Name="Previous month">
+                        <ui:SymbolIcon Symbol="ChevronLeft" FontSize="16" />
+                    </Button>
+                    <TextBlock Text="{Binding MonthTitle}" Theme="{StaticResource SubtitleTextBlockStyle}"
+                               MinWidth="180" TextAlignment="Center" VerticalAlignment="Center" />
+                    <Button Theme="{StaticResource TransparentButton}" Command="{Binding NextMonthCommand}"
+                            ToolTip.Tip="Next month" AutomationProperties.Name="Next month">
+                        <ui:SymbolIcon Symbol="ChevronRight" FontSize="16" />
+                    </Button>
+                    <Button Content="This month" Command="{Binding GoToThisMonthCommand}" IsVisible="{Binding !IsCurrentMonth}" />
+                    <Button Command="{Binding ReloadCommand}" ToolTip.Tip="Reload from file" AutomationProperties.Name="Reload from file">
+                        <ui:SymbolIcon Symbol="Refresh" FontSize="16" />
+                    </Button>
+                    <Button Command="{Binding OpenWorkbookCommand}" ToolTip.Tip="{Binding WorkbookName, StringFormat='Open {0}'}">
+                        <StackPanel Orientation="Horizontal" Spacing="6">
+                            <ui:SymbolIcon Symbol="OpenFile" FontSize="16" />
+                            <TextBlock Text="Open in Excel" />
+                        </StackPanel>
+                    </Button>
+                </StackPanel>
+            </Grid>
+
+            <ui:InfoBar IsOpen="{Binding HasError}" IsVisible="{Binding HasError}"
+                        IsClosable="False" Severity="Error" Message="{Binding ErrorMessage}">
+                <ui:InfoBar.ActionButton>
+                    <Button Content="Save again" Command="{Binding SaveNowCommand}" />
+                </ui:InfoBar.ActionButton>
+            </ui:InfoBar>
+            <ui:InfoBar IsOpen="{Binding HasProblems}" IsVisible="{Binding HasProblems}"
+                        IsClosable="False" Severity="Warning" Title="Some cells need fixing"
+                        Message="These couldn't be read, so they're shown as zero. Fix them in Excel, then reload.">
+                <ItemsControl ItemsSource="{Binding ProblemLines}" Margin="0,0,0,8">
+                    <ItemsControl.ItemTemplate>
+                        <DataTemplate x:DataType="x:String">
+                            <TextBlock FontSize="12" TextWrapping="Wrap" Text="{Binding}" />
+                        </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                </ItemsControl>
+            </ui:InfoBar>
+
+            <Grid ColumnDefinitions="*,16,*">
+
+                <!-- The count -->
+                <Border Classes="card" Padding="20,16" VerticalAlignment="Top">
+                    <StackPanel Spacing="10">
+                        <Grid ColumnDefinitions="*,Auto">
+                            <TextBlock Text="Count your notes" Theme="{StaticResource SubtitleTextBlockStyle}" />
+                            <TextBlock Grid.Column="1" Text="{Binding SaveState}" FontSize="12" Opacity="0.6" VerticalAlignment="Center" />
+                        </Grid>
+
+                        <ItemsControl ItemsSource="{Binding Rows}">
+                            <ItemsControl.ItemsPanel>
+                                <ItemsPanelTemplate>
+                                    <StackPanel Spacing="6" />
+                                </ItemsPanelTemplate>
+                            </ItemsControl.ItemsPanel>
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate x:DataType="vm:DenominationRowViewModel">
+                                    <Grid ColumnDefinitions="110,Auto,130,*">
+                                        <Border Classes="note"
+                                                Background="{Binding Color, Converter={x:Static views:AppConverters.HexToTint}}"
+                                                BorderBrush="{Binding Color, Converter={x:Static views:AppConverters.HexToBrush}}">
+                                            <TextBlock Text="{Binding Label}" FontWeight="SemiBold" />
+                                        </Border>
+                                        <TextBlock Grid.Column="1" Text="×" Margin="10,0" VerticalAlignment="Center" Opacity="0.6" />
+                                        <ui:NumberBox Grid.Column="2" Value="{Binding Count, Mode=TwoWay}"
+                                                      Minimum="0" Maximum="100000" SmallChange="1" LargeChange="10"
+                                                      SpinButtonPlacementMode="Inline"
+                                                      AutomationProperties.Name="{Binding Label, StringFormat='Number of {0} notes'}" />
+                                        <TextBlock Grid.Column="3" Text="{Binding ValueText}" HorizontalAlignment="Right"
+                                                   VerticalAlignment="Center" FontWeight="SemiBold" />
+                                    </Grid>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+
+                        <Grid ColumnDefinitions="*,Auto" Margin="0,4,0,0">
+                            <TextBlock Text="🪙 Coins &amp; loose change" VerticalAlignment="Center" />
+                            <ui:NumberBox Grid.Column="1" Width="150" Value="{Binding Coins, Mode=TwoWay}"
+                                          Minimum="0" SpinButtonPlacementMode="Hidden" AcceptsExpression="True"
+                                          PlaceholderText="₨ 0" AutomationProperties.Name="Coins and loose change" />
+                        </Grid>
+
+                        <Border Height="1" Background="{DynamicResource DividerStrokeColorDefaultBrush}" Margin="0,6" />
+
+                        <Grid ColumnDefinitions="*,Auto">
+                            <TextBlock Text="Total counted" FontWeight="SemiBold" VerticalAlignment="Center" />
+                            <TextBlock Grid.Column="1" Classes="big" Text="{Binding TotalText}" />
+                        </Grid>
+
+                        <Button Content="Clear the count" Command="{Binding ClearCountCommand}" HorizontalAlignment="Left"
+                                Theme="{StaticResource TransparentButton}" Opacity="0.8" />
+                    </StackPanel>
+                </Border>
+
+                <!-- The check against Bank & Cash -->
+                <StackPanel Grid.Column="2" Spacing="12" VerticalAlignment="Top">
+                    <Border Classes="card" Padding="20,16">
+                        <StackPanel Spacing="12">
+                            <TextBlock Text="Check against your records" Theme="{StaticResource SubtitleTextBlockStyle}" />
+
+                            <StackPanel Spacing="4">
+                                <TextBlock Classes="caption" Text="Counted on" />
+                                <StackPanel Orientation="Horizontal" Spacing="8">
+                                    <CalendarDatePicker SelectedDate="{Binding CountedOn}" Width="200"
+                                                        SelectedDateFormat="Custom" CustomDateFormatString="ddd, d MMM yyyy"
+                                                        Watermark="The day you counted"
+                                                        AutomationProperties.Name="Counted on" />
+                                    <Button Content="Today" Command="{Binding CountedTodayCommand}" />
+                                </StackPanel>
+                            </StackPanel>
+
+                            <Grid ColumnDefinitions="*,Auto" RowDefinitions="Auto,Auto,Auto" Margin="0,4,0,0">
+                                <TextBlock Text="You counted" VerticalAlignment="Center" />
+                                <TextBlock Grid.Column="1" Text="{Binding TotalText}" FontWeight="SemiBold" FontSize="16" />
+                                <TextBlock Grid.Row="1" Text="{Binding ExpectedLabel}" VerticalAlignment="Center" Margin="0,6,0,0" />
+                                <TextBlock Grid.Row="1" Grid.Column="1" Text="{Binding ExpectedText}" FontWeight="SemiBold" FontSize="16" Margin="0,6,0,0" />
+                                <TextBlock Grid.Row="2" Text="Difference" VerticalAlignment="Center" Margin="0,6,0,0" />
+                                <TextBlock Grid.Row="2" Grid.Column="1" Text="{Binding DifferenceText}" FontWeight="SemiBold" FontSize="16"
+                                           Margin="0,6,0,0" Classes.negative="{Binding IsMismatch}" />
+                            </Grid>
+                        </StackPanel>
+                    </Border>
+
+                    <ui:InfoBar IsOpen="True" IsClosable="False" Severity="Success"
+                                IsVisible="{Binding IsMatch}" Title="{Binding StatusTitle}" Message="{Binding StatusMessage}" />
+                    <ui:InfoBar IsOpen="True" IsClosable="False" Severity="Warning"
+                                IsVisible="{Binding IsMismatch}" Title="{Binding StatusTitle}" Message="{Binding StatusMessage}" />
+                    <ui:InfoBar IsOpen="True" IsClosable="False" Severity="Informational"
+                                IsVisible="{Binding IsNotCounted}" Title="{Binding StatusTitle}" Message="{Binding StatusMessage}" />
+                </StackPanel>
+            </Grid>
+        </StackPanel>
+    </ScrollViewer>
 </UserControl>
