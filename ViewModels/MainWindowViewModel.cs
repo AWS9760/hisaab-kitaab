@@ -49,7 +49,7 @@ public partial class MainWindowViewModel : ViewModelBase
                 AppPage.Expenses => new ExpensesViewModel(_store, _settings, _dialogs, _launcher),
                 AppPage.BankCash => new BankCashViewModel(new BankCashService(_store), _settings, _dialogs, _launcher),
                 AppPage.Currency => new CurrencyViewModel(new BankCashService(_store), _launcher),
-                AppPage.CreditCard => new CreditCardViewModel(),
+                AppPage.CreditCard => new CreditCardViewModel(new CreditCardService(_store), _settings, _dialogs, _launcher),
                 AppPage.Zakat => new ZakatViewModel(),
                 AppPage.Settings => new SettingsViewModel(_settings, _dialogs, _excel),
                 _ => throw new ArgumentOutOfRangeException(nameof(page), page, null),

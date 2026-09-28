@@ -18,6 +18,8 @@ public class AppSettings
     /// </summary>
     public List<Category>? Categories { get; set; }
 
+    public CardSettings CreditCard { get; set; } = new();
+
     /// <summary>
     /// Where the monthly workbooks are kept. Null means the default
     /// (Documents/Hisaab Kitaab).

@@ -4,21 +4,292 @@
              xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
              xmlns:ui="using:FluentAvalonia.UI.Controls"
              xmlns:vm="using:HisaabKitaab.ViewModels"
-             mc:Ignorable="d" d:DesignWidth="900" d:DesignHeight="600"
+             xmlns:views="using:HisaabKitaab.Views"
+             mc:Ignorable="d" d:DesignWidth="1000" d:DesignHeight="800"
              x:Class="HisaabKitaab.Views.CreditCardView"
              x:DataType="vm:CreditCardViewModel">
-    <Design.DataContext>
-        <vm:CreditCardViewModel />
-    </Design.DataContext>
 
-    <StackPanel Margin="32,24" Spacing="8">
-        <TextBlock Text="{Binding Title}" Theme="{StaticResource TitleTextBlockStyle}" />
-        <TextBlock Text="{Binding Description}" Theme="{StaticResource BodyTextBlockStyle}" Opacity="0.75" />
-        <ui:InfoBar Margin="0,16,0,0"
-                    IsOpen="True"
-                    IsClosable="False"
-                    Severity="Informational"
-                    Title="Not built yet"
-                    Message="This screen arrives in stage 8 of the build plan." />
-    </StackPanel>
+    <UserControl.Styles>
+        <Style Selector="ProgressBar.high">
+            <Setter Property="Foreground" Value="{DynamicResource SystemFillColorCautionBrush}" />
+        </Style>
+        <Style Selector="ProgressBar.over">
+            <Setter Property="Foreground" Value="{DynamicResource SystemFillColorCriticalBrush}" />
+        </Style>
+    </UserControl.Styles>
+
+    <Grid RowDefinitions="Auto,Auto,Auto,Auto,Auto,*" Margin="32,24,32,16">
+
+        <!-- Header -->
+        <Grid ColumnDefinitions="*,Auto" Margin="0,0,0,16">
+            <StackPanel Spacing="4" VerticalAlignment="Center">
+                <TextBlock Text="{Binding Title}" Theme="{StaticResource TitleTextBlockStyle}" />
+                <TextBlock Text="{Binding Description}" Opacity="0.75" TextWrapping="Wrap" />
+            </StackPanel>
+            <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
+                <ui:ProgressRing IsIndeterminate="True" Width="20" Height="20" IsVisible="{Binding IsBusy}" />
+                <Button Theme="{StaticResource TransparentButton}" Command="{Binding PreviousMonthCommand}"
+                        ToolTip.Tip="Previous month" AutomationProperties.Name="Previous month">
+                    <ui:SymbolIcon Symbol="ChevronLeft" FontSize="16" />
+                </Button>
+                <TextBlock Text="{Binding MonthTitle}" Theme="{StaticResource SubtitleTextBlockStyle}"
+                           MinWidth="180" TextAlignment="Center" VerticalAlignment="Center" />
+                <Button Theme="{StaticResource TransparentButton}" Command="{Binding NextMonthCommand}"
+                        ToolTip.Tip="Next month" AutomationProperties.Name="Next month">
+                    <ui:SymbolIcon Symbol="ChevronRight" FontSize="16" />
+                </Button>
+                <Button Content="This month" Command="{Binding GoToThisMonthCommand}" IsVisible="{Binding !IsCurrentMonth}" />
+                <Button Command="{Binding ReloadCommand}" ToolTip.Tip="Reload from file" AutomationProperties.Name="Reload from file">
+                    <ui:SymbolIcon Symbol="Refresh" FontSize="16" />
+                </Button>
+                <Button Command="{Binding OpenWorkbookCommand}" ToolTip.Tip="{Binding WorkbookName, StringFormat='Open {0}'}">
+                    <StackPanel Orientation="Horizontal" Spacing="6">
+                        <ui:SymbolIcon Symbol="OpenFile" FontSize="16" />
+                        <TextBlock Text="Open in Excel" />
+                    </StackPanel>
+                </Button>
+            </StackPanel>
+        </Grid>
+
+        <!-- Summary -->
+        <Grid Grid.Row="1" ColumnDefinitions="2*,12,*" Margin="0,0,0,12">
+            <Border Classes="card" Padding="20,14">
+                <StackPanel Spacing="6">
+                    <Grid ColumnDefinitions="*,Auto">
+                        <TextBlock Classes="caption" Text="{Binding CardName, StringFormat='💳 {0} · outstanding'}" VerticalAlignment="Center" />
+                        <!-- Card details: name, limit, due day -->
+                        <Button Grid.Column="1" Theme="{StaticResource TransparentButton}" Padding="6,2"
+                                ToolTip.Tip="Card details" AutomationProperties.Name="Card details">
+                            <StackPanel Orientation="Horizontal" Spacing="6">
+                                <ui:SymbolIcon Symbol="Settings" FontSize="14" />
+                                <TextBlock Text="Card details" FontSize="12" />
+                            </StackPanel>
+                            <Button.Flyout>
+                                <Flyout Placement="BottomEdgeAlignedRight">
+                                    <StackPanel Width="280" Spacing="10">
+                                        <TextBlock Text="Card details" FontWeight="SemiBold" />
+                                        <StackPanel>
+                                            <TextBlock Classes="caption" Text="Name" />
+                                            <TextBox Text="{Binding CardNameInput}" Watermark="e.g. HBL Visa" />
+                                        </StackPanel>
+                                        <StackPanel>
+                                            <TextBlock Classes="caption" Text="Credit limit (₨)" />
+                                            <ui:NumberBox Value="{Binding LimitInput, Mode=TwoWay}" SpinButtonPlacementMode="Hidden"
+                                                          AcceptsExpression="True" HorizontalAlignment="Stretch" PlaceholderText="e.g. 300000" />
+                                        </StackPanel>
+                                        <StackPanel>
+                                            <TextBlock Classes="caption" Text="Bill due on day (1-31) of each month" />
+                                            <ui:NumberBox Value="{Binding DueDayInput, Mode=TwoWay}" Minimum="1" Maximum="31"
+                                                          SpinButtonPlacementMode="Inline" HorizontalAlignment="Stretch" PlaceholderText="e.g. 12" />
+                                        </StackPanel>
+                                        <Button Classes="accent" Content="Save" Command="{Binding SaveCardDetailsCommand}" />
+                                    </StackPanel>
+                                </Flyout>
+                            </Button.Flyout>
+                        </Button>
+                    </Grid>
+
+                    <TextBlock Text="{Binding OutstandingText}" FontSize="28" FontWeight="SemiBold"
+                               Classes.negative="{Binding IsOverLimit}" />
+
+                    <ProgressBar Minimum="0" Maximum="100" Value="{Binding LimitUsedPercent}" Height="6"
+                                 IsVisible="{Binding HasLimit}"
+                                 Classes.high="{Binding IsHighUsage}" Classes.over="{Binding IsOverLimit}" />
+                    <TextBlock Text="{Binding LimitText}" FontSize="12" Opacity="0.8" TextWrapping="Wrap" />
+
+                    <Button Theme="{StaticResource TransparentButton}" Padding="4,2" Margin="-4,0,0,0"
+                            HorizontalAlignment="Left" ToolTip.Tip="Change what was owed at the start of the month">
+                        <StackPanel Orientation="Horizontal" Spacing="6">
+                            <TextBlock Text="{Binding OpeningText}" FontSize="12" Opacity="0.8" />
+                            <ui:SymbolIcon Symbol="Edit" FontSize="12" Opacity="0.8" />
+                        </StackPanel>
+                        <Button.Flyout>
+                            <Flyout Placement="BottomEdgeAlignedLeft">
+                                <StackPanel Width="280" Spacing="10">
+                                    <TextBlock Text="Owed at the start of the month" FontWeight="SemiBold" />
+                                    <TextBlock Text="Use the balance from your card statement. Otherwise it follows last month's outstanding amount."
+                                               TextWrapping="Wrap" FontSize="12" Opacity="0.75" />
+                                    <ui:NumberBox Value="{Binding OpeningInput, Mode=TwoWay}" SpinButtonPlacementMode="Hidden"
+                                                  AcceptsExpression="True" HorizontalAlignment="Stretch"
+                                                  AutomationProperties.Name="Owed at the start of the month" />
+                                    <StackPanel Orientation="Horizontal" Spacing="8">
+                                        <Button Classes="accent" Content="Set" Command="{Binding SetOpeningCommand}" />
+                                        <Button Content="Carry forward instead" Command="{Binding CarryOpeningCommand}"
+                                                IsVisible="{Binding OpeningIsManual}" />
+                                    </StackPanel>
+                                </StackPanel>
+                            </Flyout>
+                        </Button.Flyout>
+                    </Button>
+                    <ItemsControl ItemsSource="{Binding Breakdown}">
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate x:DataType="x:String">
+                                <TextBlock Text="{Binding}" FontSize="12" Opacity="0.7" />
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+                </StackPanel>
+            </Border>
+
+            <Border Grid.Column="2" Classes="card" Padding="20,14">
+                <StackPanel Spacing="6">
+                    <TextBlock Classes="caption" Text="📅 Due date" />
+                    <TextBlock Text="{Binding DueText}" FontSize="16" FontWeight="SemiBold" TextWrapping="Wrap" />
+                    <TextBlock Text="Repayments from the bank or cash are taken off those balances on Bank &amp; Cash."
+                               FontSize="12" Opacity="0.7" TextWrapping="Wrap" />
+                </StackPanel>
+            </Border>
+        </Grid>
+
+        <!-- Warnings -->
+        <StackPanel Grid.Row="2" Spacing="8">
+            <ui:InfoBar IsOpen="{Binding HasWarning}" IsVisible="{Binding HasWarning}" IsClosable="False"
+                        Severity="Warning" Message="{Binding Warning}" Margin="0,0,0,4" />
+            <ui:InfoBar IsOpen="{Binding HasProblems}" IsVisible="{Binding HasProblems}"
+                        IsClosable="False" Severity="Warning" Title="Some rows need fixing"
+                        Message="These rows couldn't be read and aren't counted. Fix them in Excel, then reload." Margin="0,0,0,4">
+                <ItemsControl ItemsSource="{Binding ProblemLines}" Margin="0,0,0,8">
+                    <ItemsControl.ItemTemplate>
+                        <DataTemplate x:DataType="x:String">
+                            <TextBlock FontSize="12" TextWrapping="Wrap" Text="{Binding}" />
+                        </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                </ItemsControl>
+            </ui:InfoBar>
+        </StackPanel>
+
+        <!-- Log a repayment -->
+        <Border Grid.Row="3" Classes="card" Padding="16" Margin="0,0,0,12">
+            <StackPanel x:Name="EntryForm" Spacing="12">
+                <Grid ColumnDefinitions="Auto,*">
+                    <TextBlock Text="{Binding FormTitle}" Theme="{StaticResource BodyStrongTextBlockStyle}" />
+                    <TextBlock Grid.Column="1" Text="{Binding StatusMessage}" HorizontalAlignment="Right"
+                               Foreground="{DynamicResource SystemFillColorSuccessBrush}" />
+                </Grid>
+
+                <Grid ColumnDefinitions="Auto,12,*,12,*" RowDefinitions="Auto,12,Auto">
+                    <StackPanel>
+                        <TextBlock Classes="caption" Text="Paid" />
+                        <ListBox Classes="segmented" ItemsSource="{Binding FromOptions}" SelectedItem="{Binding EntryFrom}"
+                                 AutomationProperties.Name="Paid from">
+                            <ListBox.ItemsPanel>
+                                <ItemsPanelTemplate>
+                                    <StackPanel Orientation="Horizontal" />
+                                </ItemsPanelTemplate>
+                            </ListBox.ItemsPanel>
+                            <ListBox.ItemTemplate>
+                                <DataTemplate x:DataType="vm:AccountOption">
+                                    <StackPanel Orientation="Horizontal" Spacing="6">
+                                        <TextBlock Text="{Binding Icon}" />
+                                        <TextBlock Text="{Binding Name}" />
+                                    </StackPanel>
+                                </DataTemplate>
+                            </ListBox.ItemTemplate>
+                        </ListBox>
+                    </StackPanel>
+                    <StackPanel Grid.Column="2">
+                        <Grid ColumnDefinitions="*,Auto">
+                            <TextBlock Classes="caption" Text="Amount (₨)" />
+                            <Button Grid.Column="1" Content="Pay in full" FontSize="11" Padding="4,0" Margin="0,0,0,2"
+                                    Theme="{StaticResource TransparentButton}" Command="{Binding PayInFullCommand}" />
+                        </Grid>
+                        <ui:NumberBox x:Name="AmountBox" Value="{Binding EntryAmount, Mode=TwoWay}"
+                                      AcceptsExpression="True" SpinButtonPlacementMode="Hidden"
+                                      HorizontalAlignment="Stretch" PlaceholderText="e.g. 25000"
+                                      AutomationProperties.Name="Amount" />
+                    </StackPanel>
+                    <StackPanel Grid.Column="4">
+                        <TextBlock Classes="caption" Text="Date" />
+                        <CalendarDatePicker SelectedDate="{Binding EntryDate}" HorizontalAlignment="Stretch"
+                                            SelectedDateFormat="Custom" CustomDateFormatString="ddd, d MMM yyyy"
+                                            AutomationProperties.Name="Date" />
+                    </StackPanel>
+                    <Grid Grid.Row="2" Grid.ColumnSpan="5" ColumnDefinitions="*,12,Auto">
+                        <StackPanel>
+                            <TextBlock Classes="caption" Text="Note" />
+                            <TextBox Text="{Binding EntryNote}" Watermark="Optional, e.g. paid through the banking app"
+                                     AutomationProperties.Name="Note" />
+                        </StackPanel>
+                        <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="8" VerticalAlignment="Bottom">
+                            <Button Content="Cancel" Command="{Binding CancelEditCommand}" IsVisible="{Binding IsEditing}" />
+                            <Button Classes="accent" Command="{Binding SaveRepaymentCommand}" MinWidth="110">
+                                <StackPanel Orientation="Horizontal" Spacing="6">
+                                    <ui:SymbolIcon Symbol="Add" FontSize="16" IsVisible="{Binding !IsEditing}" />
+                                    <ui:SymbolIcon Symbol="Save" FontSize="16" IsVisible="{Binding IsEditing}" />
+                                    <TextBlock Text="{Binding SaveButtonText}" />
+                                </StackPanel>
+                            </Button>
+                        </StackPanel>
+                    </Grid>
+                </Grid>
+
+                <ui:InfoBar IsOpen="{Binding HasError}" IsVisible="{Binding HasError}"
+                            IsClosable="False" Severity="Error" Message="{Binding ErrorMessage}" />
+            </StackPanel>
+        </Border>
+
+        <TextBlock Grid.Row="4" Text="Card spending and repayments" Theme="{StaticResource BodyStrongTextBlockStyle}" Margin="0,0,0,6" />
+
+        <TextBlock Grid.Row="5" Text="Nothing on the card this month. Card expenses from the Expenses page and repayments you log here will show up."
+                   Opacity="0.6" HorizontalAlignment="Center" TextWrapping="Wrap" TextAlignment="Center"
+                   Margin="0,24" IsVisible="{Binding !HasRows}" />
+
+        <DataGrid Grid.Row="5" x:Name="CardGrid"
+                  ItemsSource="{Binding Rows}" IsVisible="{Binding HasRows}"
+                  IsReadOnly="True" CanUserSortColumns="False" CanUserResizeColumns="True"
+                  GridLinesVisibility="Horizontal" HeadersVisibility="Column" SelectionMode="Single"
+                  DoubleTapped="OnGridDoubleTapped">
+            <DataGrid.Columns>
+                <DataGridTextColumn Header="Date" x:DataType="vm:CardRowViewModel" Binding="{Binding DateText}" Width="110" />
+                <DataGridTemplateColumn Header="Details" Width="*" MinWidth="200">
+                    <DataGridTemplateColumn.CellTemplate>
+                        <DataTemplate x:DataType="vm:CardRowViewModel">
+                            <StackPanel Orientation="Horizontal" Spacing="8" Margin="12,0" VerticalAlignment="Center">
+                                <Border Width="24" Height="24" CornerRadius="12"
+                                        Background="{Binding Color, Converter={x:Static views:AppConverters.HexToTint}}">
+                                    <TextBlock Text="{Binding Icon}" FontSize="12" HorizontalAlignment="Center" VerticalAlignment="Center" />
+                                </Border>
+                                <TextBlock Text="{Binding Title}" VerticalAlignment="Center" FontWeight="SemiBold" />
+                                <TextBlock Text="{Binding Detail}" VerticalAlignment="Center" Opacity="0.7" TextTrimming="CharacterEllipsis" />
+                            </StackPanel>
+                        </DataTemplate>
+                    </DataGridTemplateColumn.CellTemplate>
+                </DataGridTemplateColumn>
+                <DataGridTemplateColumn Header="Change" Width="130">
+                    <DataGridTemplateColumn.CellTemplate>
+                        <DataTemplate x:DataType="vm:CardRowViewModel">
+                            <TextBlock Text="{Binding ChangeText}" HorizontalAlignment="Right" VerticalAlignment="Center" Margin="12,0" />
+                        </DataTemplate>
+                    </DataGridTemplateColumn.CellTemplate>
+                </DataGridTemplateColumn>
+                <DataGridTemplateColumn Header="Owed after" Width="140">
+                    <DataGridTemplateColumn.CellTemplate>
+                        <DataTemplate x:DataType="vm:CardRowViewModel">
+                            <TextBlock Text="{Binding OwedText}" HorizontalAlignment="Right" VerticalAlignment="Center"
+                                       Margin="12,0" FontWeight="SemiBold" />
+                        </DataTemplate>
+                    </DataGridTemplateColumn.CellTemplate>
+                </DataGridTemplateColumn>
+                <DataGridTemplateColumn Width="84" CanUserResize="False">
+                    <DataGridTemplateColumn.CellTemplate>
+                        <DataTemplate x:DataType="vm:CardRowViewModel">
+                            <StackPanel Orientation="Horizontal" Spacing="2" HorizontalAlignment="Right" Margin="0,0,8,0"
+                                        IsVisible="{Binding IsRepayment}">
+                                <Button Theme="{StaticResource TransparentButton}"
+                                        Command="{Binding $parent[DataGrid].((vm:CreditCardViewModel)DataContext).BeginEditCommand}"
+                                        CommandParameter="{Binding}" ToolTip.Tip="Edit" AutomationProperties.Name="Edit repayment">
+                                    <ui:SymbolIcon Symbol="Edit" FontSize="15" />
+                                </Button>
+                                <Button Theme="{StaticResource TransparentButton}"
+                                        Command="{Binding $parent[DataGrid].((vm:CreditCardViewModel)DataContext).DeleteCommand}"
+                                        CommandParameter="{Binding}" ToolTip.Tip="Delete" AutomationProperties.Name="Delete repayment">
+                                    <ui:SymbolIcon Symbol="Delete" FontSize="15" />
+                                </Button>
+                            </StackPanel>
+                        </DataTemplate>
+                    </DataGridTemplateColumn.CellTemplate>
+                </DataGridTemplateColumn>
+            </DataGrid.Columns>
+        </DataGrid>
+    </Grid>
 </UserControl>

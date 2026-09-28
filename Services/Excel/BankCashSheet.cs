@@ -22,6 +22,8 @@ internal sealed class BankCashSheet
     private const string SourceLabel = "Opening set by";
     private const string ManualSource = "You";
     private const string CarriedSource = "Carried forward";
+    private const string CardRepaymentsLabel = "− Card repayments";
+    private const string ClosingLabel = "Closing balance";
 
     // Log columns.
     private const int ColDate = 1, ColType = 2, ColAmount = 3, ColNote = 4, ColBank = 5, ColCash = 6, ColId = 7;
@@ -202,9 +204,9 @@ internal sealed class BankCashSheet
     /// (Re)writes every formula so it points at the current log rows and the
     /// Expenses sheet's current columns. Called before every save.
     /// </summary>
-    public void RefreshFormulas(ExpensesSheet expenses)
+    public void RefreshFormulas(ExpensesSheet expenses, CreditCardSheet card)
     {
-        var f = new FormulaParts(this, expenses, qualified: false);
+        var f = new FormulaParts(this, expenses, card, qualified: false);
         string LogSum(BankCashEntryType type, string? dateCriteria = null) => f.LogSum(type, dateCriteria);
         string ExpSum(string method, string? dateCriteria = null) => f.ExpSum(method, dateCriteria);
 
@@ -213,7 +215,8 @@ internal sealed class BankCashSheet
         var withdrawals = o + 3;
         var deposits = o + 4;
         var spent = o + 5;
-        var closing = o + 6;
+        var repaid = o + 6;
+        var closing = ClosingRow;
 
         SetFormula(income, 2, LogSum(BankCashEntryType.BankIncome));
         SetFormula(income, 3, LogSum(BankCashEntryType.CashIncome));
@@ -223,10 +226,12 @@ internal sealed class BankCashSheet
         SetFormula(deposits, 3, "-" + LogSum(BankCashEntryType.Deposit));
         SetFormula(spent, 2, "-" + ExpSum("Bank"));
         SetFormula(spent, 3, "-" + ExpSum("Cash"));
-        SetFormula(closing, 2, $"B{o}+SUM(B{income}:B{spent})");
-        SetFormula(closing, 3, $"C{o}+SUM(C{income}:C{spent})");
+        SetFormula(repaid, 2, "-" + card.RepaidFromFormula(Account.Bank));
+        SetFormula(repaid, 3, "-" + card.RepaidFromFormula(Account.Cash));
+        SetFormula(closing, 2, $"B{o}+SUM(B{income}:B{repaid})");
+        SetFormula(closing, 3, $"C{o}+SUM(C{income}:C{repaid})");
 
-        // Running balances at the end of each logged day, expenses included.
+        // Running balances at the end of each logged day, expenses and card repayments included.
         foreach (var row in LogRowNumbers())
         {
             if (IsBlankLogRow(row))
@@ -237,11 +242,13 @@ internal sealed class BankCashSheet
             }
 
             var upTo = $"\"<=\"&A{row}";
-            SetFormula(row, ColBank,
-                $"$B${o}+{LogSum(BankCashEntryType.BankIncome, upTo)}+{LogSum(BankCashEntryType.Deposit, upTo)}" +
-                $"-{LogSum(BankCashEntryType.Withdrawal, upTo)}-{ExpSum("Bank", upTo)}");
+            SetFormula(row, ColBank, f.BankUpTo(upTo));
             SetFormula(row, ColCash, f.CashUpTo(upTo));
         }
+
+        SheetHelpers.ApplyListValidation(_ws, ColType, FirstLogRow, LastLogRow() + FormulaRows,
+            BankCashEntryTypes.All.Select(t => t.ToDisplayName()), "Type",
+            "Choose Withdrawal, Deposit, Income to bank or Income in cash.");
     }
 
     /// <summary>
@@ -249,17 +256,19 @@ internal sealed class BankCashSheet
     /// the day in <paramref name="dateCell"/> (a cell on that other sheet), or
     /// the closing cash in hand if that cell is empty.
     /// </summary>
-    public string CashOnDateFormula(ExpensesSheet expenses, string dateCell)
+    public string CashOnDateFormula(ExpensesSheet expenses, CreditCardSheet card, string dateCell)
     {
-        var f = new FormulaParts(this, expenses, qualified: true);
-        return $"IF({dateCell}=\"\",{f.Sheet}$C${_openingRow + 6},{f.CashUpTo($"\"<=\"&{dateCell}")})";
+        var f = new FormulaParts(this, expenses, card, qualified: true);
+        return $"IF({dateCell}=\"\",{f.Sheet}$C${ClosingRow},{f.CashUpTo($"\"<=\"&{dateCell}")})";
     }
+
+    private int ClosingRow => _openingRow + 7;
 
     /// <summary>
     /// Builds the SUMIFS pieces. With <c>qualified</c> set, references to this
     /// sheet carry its name so the formula works from other sheets.
     /// </summary>
-    private sealed class FormulaParts(BankCashSheet sheet, ExpensesSheet expenses, bool qualified)
+    private sealed class FormulaParts(BankCashSheet sheet, ExpensesSheet expenses, CreditCardSheet card, bool qualified)
     {
         public string Sheet { get; } = qualified ? $"'{SheetName}'!" : string.Empty;
 
@@ -275,11 +284,20 @@ internal sealed class BankCashSheet
             $"SUMIFS({Exp(expenses.AmountColumn)},{Exp(expenses.PaymentColumn)},\"{method}\"{(dateCriteria is null ? "" : $",{Exp(expenses.DateColumn)},{dateCriteria}")})";
 
         /// <summary>
+        /// Opening bank balance plus money in, minus money out, up to a date.
+        /// </summary>
+        public string BankUpTo(string dateCriteria) =>
+            $"{Sheet}$B${sheet._openingRow}+{LogSum(BankCashEntryType.BankIncome, dateCriteria)}+{LogSum(BankCashEntryType.Deposit, dateCriteria)}" +
+            $"-{LogSum(BankCashEntryType.Withdrawal, dateCriteria)}-{ExpSum("Bank", dateCriteria)}" +
+            $"-{card.RepaidFromFormula(Account.Bank, dateCriteria)}";
+
+        /// <summary>
         /// Opening cash plus cash in, minus cash out, up to a date.
         /// </summary>
         public string CashUpTo(string dateCriteria) =>
             $"{Sheet}$C${sheet._openingRow}+{LogSum(BankCashEntryType.CashIncome, dateCriteria)}+{LogSum(BankCashEntryType.Withdrawal, dateCriteria)}" +
-            $"-{LogSum(BankCashEntryType.Deposit, dateCriteria)}-{ExpSum("Cash", dateCriteria)}";
+            $"-{LogSum(BankCashEntryType.Deposit, dateCriteria)}-{ExpSum("Cash", dateCriteria)}" +
+            $"-{card.RepaidFromFormula(Account.Cash, dateCriteria)}";
     }
 
     private void SetFormula(int row, int col, string formula)
@@ -315,7 +333,33 @@ internal sealed class BankCashSheet
             }
         }
 
-        return _openingRow != 0 && _logHeaderRow != 0;
+        if (_openingRow == 0 || _logHeaderRow == 0)
+            return false;
+
+        // Only upgrade once the whole sheet is recognised, so an unrelated
+        // sheet that happens to share a label is never changed.
+        if (AddCardRepaymentRowIfMissing())
+            _logHeaderRow++;
+
+        return true;
+    }
+
+    /// <summary>
+    /// Sheets made before card repayments existed go straight from
+    /// "− Expenses paid" to "Closing balance"; slot the new row in between.
+    /// </summary>
+    /// <returns>True if the row was added (everything below moves down one).</returns>
+    private bool AddCardRepaymentRowIfMissing()
+    {
+        var oldClosing = _openingRow + 6;
+        if (!_ws.Cell(oldClosing, 1).GetString().Trim().Equals(ClosingLabel, StringComparison.OrdinalIgnoreCase))
+            return false;
+
+        _ws.Row(oldClosing).InsertRowsAbove(1);
+        _ws.Range(oldClosing, 1, oldClosing, 3).Style = _ws.Cell(oldClosing - 1, 1).Style;
+        _ws.Cell(oldClosing, 1).Value = CardRepaymentsLabel;
+        IsModified = true;
+        return true;
     }
 
     private void BuildLayout()
@@ -333,14 +377,14 @@ internal sealed class BankCashSheet
         _ws.Cell(4, 2).Value = "Bank";
         _ws.Cell(4, 3).Value = "Cash in hand";
 
-        string[] labels = { OpeningLabel, SourceLabel, "+ Income", "± Withdrawals", "± Deposits", "− Expenses paid", "Closing balance" };
+        string[] labels = { OpeningLabel, SourceLabel, "+ Income", "± Withdrawals", "± Deposits", "− Expenses paid", CardRepaymentsLabel, ClosingLabel };
         for (var i = 0; i < labels.Length; i++)
             _ws.Cell(_openingRow + i, 1).Value = labels[i];
 
         SetOpening(Account.Bank, 0, isManual: false);
         SetOpening(Account.Cash, 0, isManual: false);
         _ws.Range(SourceRow, 2, SourceRow, 3).Style.Font.Italic = true;
-        var closingRow = _openingRow + 6;
+        var closingRow = ClosingRow;
         _ws.Range(closingRow, 1, closingRow, 3).Style.Font.Bold = true;
         _ws.Range(closingRow, 1, closingRow, 3).Style.Border.TopBorder = XLBorderStyleValues.Thin;
 
@@ -360,11 +404,6 @@ internal sealed class BankCashSheet
             _ws.Column(i + 1).Width = widths[i];
         _ws.Column(ColId).Hide();
         _ws.SheetView.FreezeRows(_logHeaderRow);
-
-        var validation = _ws.Range(FirstLogRow, ColType, FirstLogRow + FormulaRows, ColType).CreateDataValidation();
-        validation.List("\"" + string.Join(",", BankCashEntryTypes.All.Select(t => t.ToDisplayName())) + "\"", true);
-        validation.ErrorTitle = "Type";
-        validation.ErrorMessage = "Choose Withdrawal, Deposit, Income to bank or Income in cash.";
 
         IsModified = true;
     }

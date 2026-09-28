@@ -229,8 +229,8 @@ public partial class BankCashViewModel : PageViewModelBase
         (OpeningBankInput, OpeningCashInput) = ((double)b.OpeningBank, (double)b.OpeningCash);
         (BankOpeningIsManual, CashOpeningIsManual) = (b.BankOpeningIsManual, b.CashOpeningIsManual);
 
-        BankBreakdown = Lines(("Income", b.BankIncome), ("Deposits", b.Deposits), ("Withdrawals", -b.Withdrawals), ("Bank expenses", -b.BankExpenses));
-        CashBreakdown = Lines(("Income", b.CashIncome), ("Withdrawals", b.Withdrawals), ("Deposits", -b.Deposits), ("Cash expenses", -b.CashExpenses));
+        BankBreakdown = Lines(("Income", b.BankIncome), ("Deposits", b.Deposits), ("Withdrawals", -b.Withdrawals), ("Bank expenses", -b.BankExpenses), ("Card repayments", -b.CardRepaymentsBank));
+        CashBreakdown = Lines(("Income", b.CashIncome), ("Withdrawals", b.Withdrawals), ("Deposits", -b.Deposits), ("Cash expenses", -b.CashExpenses), ("Card repayments", -b.CardRepaymentsCash));
 
         BalanceWarning = (b.FirstNegativeCash, b.FirstNegativeBank) switch
         {

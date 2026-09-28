@@ -25,9 +25,16 @@ public class ExcelService
 
     private const string SchemaPropertyName = "HisaabKitaab.SchemaVersion";
 
-    public ExcelService(string dataFolder)
+    private readonly Func<CardSettings>? _cardSettings;
+
+    /// <param name="cardSettings">
+    /// Supplies the credit card's limit and due day for the Credit Card sheet.
+    /// Read at each save, so changes in Settings show up the next time a month is saved.
+    /// </param>
+    public ExcelService(string dataFolder, Func<CardSettings>? cardSettings = null)
     {
         DataFolder = dataFolder;
+        _cardSettings = cardSettings;
     }
 
     public string DataFolder { get; }
@@ -331,6 +338,153 @@ public class ExcelService
         Save(workbook, path);
     }
 
+    /// <summary>
+    /// Re-saves a month's workbook so derived parts (formulas, the card's limit
+    /// and due date, the copy of card expenses) are brought up to date.
+    /// Does nothing for a month with no workbook.
+    /// </summary>
+    public void RefreshMonthWorkbook(YearMonth month)
+    {
+        var path = GetMonthFilePath(month);
+        if (!File.Exists(path))
+            return;
+
+        using var workbook = Open(path);
+        Save(workbook, path);
+    }
+
+    // ---- Credit Card --------------------------------------------------------
+
+    /// <summary>
+    /// Reads the month's Credit Card sheet. A month with no file, or a file
+    /// from before this sheet existed, returns no repayments and a carried-forward opening.
+    /// </summary>
+    public CardSheetData LoadCard(YearMonth month)
+    {
+        var path = GetMonthFilePath(month);
+        if (!File.Exists(path))
+            return CardSheetData.Empty(month);
+
+        using var workbook = Open(path);
+        var sheet = CreditCardSheet.Find(workbook, month);
+        if (sheet is null)
+            return CardSheetData.Empty(month, fileExists: true);
+
+        var data = sheet.Read();
+        if (sheet.IsModified)
+        {
+            // New IDs for rows added by hand; see LoadExpenses.
+            try
+            {
+                Save(workbook, path);
+            }
+            catch (WorkbookLockedException)
+            {
+            }
+        }
+
+        return data;
+    }
+
+    public CardRepayment AddCardRepayment(CardRepayment repayment)
+    {
+        repayment = Normalize(repayment);
+        if (repayment.Id == Guid.Empty)
+            repayment = repayment with { Id = Guid.NewGuid() };
+
+        var month = YearMonth.Of(repayment.Date);
+        var path = GetMonthFilePath(month);
+        using var workbook = File.Exists(path) ? Open(path) : CreateWorkbook(month);
+        CreditCardSheet.GetOrCreate(workbook, month).Insert(repayment);
+        Save(workbook, path);
+        return repayment;
+    }
+
+    /// <exception cref="KeyNotFoundException">The repayment is no longer in the file.</exception>
+    public CardRepayment UpdateCardRepayment(YearMonth originalMonth, CardRepayment repayment)
+    {
+        repayment = Normalize(repayment);
+        if (repayment.Id == Guid.Empty)
+            throw new ArgumentException("Repayment has no ID.", nameof(repayment));
+
+        var newMonth = YearMonth.Of(repayment.Date);
+        if (newMonth == originalMonth)
+        {
+            var path = GetMonthFilePath(originalMonth);
+            using var workbook = OpenExisting(path);
+            if (!CreditCardSheet.GetOrCreate(workbook, originalMonth).Update(repayment))
+                throw RepaymentNotFound(repayment.Id, originalMonth);
+            Save(workbook, path);
+            return repayment;
+        }
+
+        if (LoadCard(originalMonth).Repayments.All(r => r.Id != repayment.Id))
+            throw RepaymentNotFound(repayment.Id, originalMonth);
+        AddCardRepayment(repayment);
+        try
+        {
+            DeleteCardRepayment(originalMonth, repayment.Id);
+        }
+        catch
+        {
+            try
+            {
+                DeleteCardRepayment(newMonth, repayment.Id);
+            }
+            catch (Exception ex) when (ex is IOException or KeyNotFoundException)
+            {
+            }
+
+            throw;
+        }
+
+        return repayment;
+    }
+
+    /// <exception cref="KeyNotFoundException">The repayment is no longer in the file.</exception>
+    public void DeleteCardRepayment(YearMonth month, Guid id)
+    {
+        var path = GetMonthFilePath(month);
+        using var workbook = OpenExisting(path);
+        if (!CreditCardSheet.GetOrCreate(workbook, month).Delete(id))
+            throw RepaymentNotFound(id, month);
+        Save(workbook, path);
+    }
+
+    /// <summary>
+    /// Writes the opening outstanding. <paramref name="isManual"/> false marks
+    /// it as carried forward from last month.
+    /// </summary>
+    public void SetCardOpening(YearMonth month, decimal value, bool isManual)
+    {
+        if (value < 0 || value >= MaxAmount)
+            throw new ArgumentException("The opening amount owed must be zero or more.", nameof(value));
+
+        var path = GetMonthFilePath(month);
+        using var workbook = File.Exists(path) ? Open(path) : CreateWorkbook(month);
+        CreditCardSheet.GetOrCreate(workbook, month).SetOpening(Math.Round(value, 2, MidpointRounding.AwayFromZero), isManual);
+        Save(workbook, path);
+    }
+
+    private static CardRepayment Normalize(CardRepayment repayment)
+    {
+        if (repayment.Amount <= 0)
+            throw new ArgumentException("Amount must be more than zero.", nameof(repayment));
+        if (repayment.Amount >= MaxAmount)
+            throw new ArgumentException("Amount is too large.", nameof(repayment));
+        if (!Enum.IsDefined(repayment.PaidFrom))
+            throw new ArgumentException("Choose Bank or Cash.", nameof(repayment));
+
+        return repayment with
+        {
+            Amount = Math.Round(repayment.Amount, 2, MidpointRounding.AwayFromZero),
+            Note = repayment.Note?.Trim() ?? string.Empty,
+        };
+    }
+
+    private static KeyNotFoundException RepaymentNotFound(Guid id, YearMonth month) =>
+        new($"That repayment is no longer in {month.FileName}. It may have been changed in Excel; reload and try again. (ID {id})");
+
     private static BankCashEntry Normalize(BankCashEntry entry)
     {
         if (entry.Amount <= 0)
@@ -471,7 +625,7 @@ public class ExcelService
         return workbook;
     }
 
-    private static void Save(XLWorkbook workbook, string path)
+    private void Save(XLWorkbook workbook, string path)
     {
         WriteSchemaVersion(workbook);
         if (YearMonth.TryParseFileName(Path.GetFileName(path), out var month))
@@ -513,15 +667,21 @@ public class ExcelService
     }
 
     /// <summary>
-    /// Makes sure a monthly workbook has all its sheets and that the Bank &amp;
-    /// Cash formulas point at the Expenses sheet's current columns.
+    /// Makes sure a monthly workbook has all its sheets, that every formula
+    /// points at the other sheets' current rows and columns, and that the
+    /// Credit Card sheet shows the card's current limit, due date and expenses.
     /// </summary>
-    private static void CompleteMonthWorkbook(XLWorkbook workbook, YearMonth month)
+    private void CompleteMonthWorkbook(XLWorkbook workbook, YearMonth month)
     {
         var expenses = ExpensesSheet.GetOrCreate(workbook, month);
         var bank = BankCashSheet.GetOrCreate(workbook, month);
-        bank.RefreshFormulas(expenses);
-        CurrencySheet.GetOrCreate(workbook, month).RefreshFormulas(bank, expenses);
+        var currency = CurrencySheet.GetOrCreate(workbook, month);
+        var card = CreditCardSheet.GetOrCreate(workbook, month);
+
+        card.SetCardDetails(_cardSettings?.Invoke());
+        card.Refresh(expenses, expenses.ReadAll().Expenses);
+        bank.RefreshFormulas(expenses, card);
+        currency.RefreshFormulas(bank, card, expenses);
 
         // Excel recalculates everything when the file is opened.
         workbook.FullCalculationOnLoad = true;

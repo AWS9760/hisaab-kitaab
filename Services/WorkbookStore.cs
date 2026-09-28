@@ -16,6 +16,7 @@ public sealed class WorkbookStore
     private readonly Dictionary<YearMonth, Entry<ExpenseSheetData>> _expenses = new();
     private readonly Dictionary<YearMonth, Entry<BankCashSheetData>> _bankCash = new();
     private readonly Dictionary<YearMonth, Entry<CurrencySheetData>> _currency = new();
+    private readonly Dictionary<YearMonth, Entry<CardSheetData>> _card = new();
 
     private sealed record Entry<T>(T Data, FileStamp Stamp);
 
@@ -73,6 +74,15 @@ public sealed class WorkbookStore
         error => CurrencySheetData.None(month, fileExists: true, error));
 
     /// <summary>
+    /// The month's Credit Card sheet (repayments and opening outstanding).
+    /// </summary>
+    public CardSheetData LoadCard(YearMonth month) => Load(
+        _card, month,
+        () => _excel.LoadCard(month),
+        () => CardSheetData.Empty(month),
+        error => CardSheetData.Empty(month, fileExists: true, error));
+
+    /// <summary>
     /// Forget a month so the next load re-reads it, even if the file's timestamp looks unchanged.
     /// </summary>
     public void Invalidate(YearMonth month)
@@ -82,6 +92,7 @@ public sealed class WorkbookStore
             _expenses.Remove(month);
             _bankCash.Remove(month);
             _currency.Remove(month);
+            _card.Remove(month);
         }
     }
 

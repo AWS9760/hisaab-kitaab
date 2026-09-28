@@ -149,7 +149,7 @@ internal sealed class CurrencySheet
     /// <summary>
     /// (Re)writes the totals and the comparison with Bank &amp; Cash.
     /// </summary>
-    public void RefreshFormulas(BankCashSheet bank, ExpensesSheet expenses)
+    public void RefreshFormulas(BankCashSheet bank, CreditCardSheet card, ExpensesSheet expenses)
     {
         for (var i = 0; i < PkrNotes.Denominations.Count; i++)
         {
@@ -158,7 +158,7 @@ internal sealed class CurrencySheet
         }
 
         SetFormula(TotalRow, ColValue, $"SUM(C{FirstNoteRow}:C{CoinsRow})");
-        SetFormula(ExpectedRow, ColValue, bank.CashOnDateFormula(expenses, $"$B${DateRow}"));
+        SetFormula(ExpectedRow, ColValue, bank.CashOnDateFormula(expenses, card, $"$B${DateRow}"));
         SetFormula(DifferenceRow, ColValue, $"C{TotalRow}-C{ExpectedRow}");
 
         var status = _ws.Cell(StatusRow, ColValue);

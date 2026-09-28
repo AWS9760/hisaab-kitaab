@@ -37,6 +37,13 @@ public class LedgerRowViewModel
             Title = option.Name;
             Detail = string.IsNullOrWhiteSpace(entry.Note) ? option.Explanation : entry.Note;
         }
+        else if (line.Repayment is { } repayment)
+        {
+            Icon = "💳";
+            Color = "#2563EB";
+            Title = "Card repayment";
+            Detail = string.IsNullOrWhiteSpace(repayment.Note) ? $"Paid from {repayment.PaidFrom.ToDisplayName().ToLowerInvariant()}" : repayment.Note;
+        }
         else
         {
             var expense = line.Expense!;
@@ -52,7 +59,7 @@ public class LedgerRowViewModel
     public BankCashEntry? Entry => Line.Entry;
 
     /// <summary>
-    /// Only logged entries can be edited here; expenses are edited on the Expenses page.
+    /// Only logged entries can be edited here; expenses and card repayments have their own pages.
     /// </summary>
     public bool IsEntry => Line.Entry is not null;
 

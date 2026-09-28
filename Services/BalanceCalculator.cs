@@ -9,6 +9,9 @@ public enum LedgerLineKind
 
     /// <summary>A Cash or Bank expense from the Expenses sheet.</summary>
     Expense,
+
+    /// <summary>A credit card bill paid from the bank or from cash.</summary>
+    CardRepayment,
 }
 
 /// <summary>
@@ -23,7 +26,8 @@ public record LedgerLine(
     decimal BankBalance,
     decimal CashBalance,
     BankCashEntry? Entry = null,
-    Expense? Expense = null);
+    Expense? Expense = null,
+    CardRepayment? Repayment = null);
 
 /// <summary>
 /// A month's bank balance and cash in hand, and how they got there.
@@ -41,7 +45,9 @@ public record MonthBalances(
     decimal Deposits,
     decimal BankExpenses,
     decimal CashExpenses,
-    IReadOnlyList<LedgerLine> Ledger)
+    IReadOnlyList<LedgerLine> Ledger,
+    decimal CardRepaymentsBank = 0,
+    decimal CardRepaymentsCash = 0)
 {
     public decimal ClosingBank => Ledger.Count == 0 ? OpeningBank : Ledger[^1].BankBalance;
 
@@ -68,20 +74,28 @@ public static class BalanceCalculator
         decimal openingBank, bool bankIsManual,
         decimal openingCash, bool cashIsManual,
         IReadOnlyList<BankCashEntry> entries,
-        IReadOnlyList<Expense> expenses)
+        IReadOnlyList<Expense> expenses,
+        IReadOnlyList<CardRepayment>? repayments = null)
     {
+        repayments ??= Array.Empty<CardRepayment>();
+
         // Timeline: by date; within a day, logged entries (e.g. the morning's
-        // withdrawal) come before that day's expenses, each in file order.
+        // withdrawal) come first, then card repayments, then expenses, each in file order.
         var movements = entries
             .Select((e, i) => (e.Date, Order: 0, Index: i,
                 Bank: e.Type.BankChange(e.Amount), Cash: e.Type.CashChange(e.Amount),
-                Entry: (BankCashEntry?)e, Expense: (Expense?)null))
+                Entry: (BankCashEntry?)e, Expense: (Expense?)null, Repayment: (CardRepayment?)null))
+            .Concat(repayments
+                .Select((r, i) => (r.Date, Order: 1, Index: i,
+                    Bank: r.PaidFrom == Account.Bank ? -r.Amount : 0m,
+                    Cash: r.PaidFrom == Account.Cash ? -r.Amount : 0m,
+                    Entry: (BankCashEntry?)null, Expense: (Expense?)null, Repayment: (CardRepayment?)r)))
             .Concat(expenses
                 .Where(x => x.PaymentMethod is PaymentMethod.Cash or PaymentMethod.Bank)
-                .Select((x, i) => (x.Date, Order: 1, Index: i,
+                .Select((x, i) => (x.Date, Order: 2, Index: i,
                     Bank: x.PaymentMethod == PaymentMethod.Bank ? -x.Amount : 0m,
                     Cash: x.PaymentMethod == PaymentMethod.Cash ? -x.Amount : 0m,
-                    Entry: (BankCashEntry?)null, Expense: (Expense?)x)))
+                    Entry: (BankCashEntry?)null, Expense: (Expense?)x, Repayment: (CardRepayment?)null)))
             .OrderBy(m => m.Date).ThenBy(m => m.Order).ThenBy(m => m.Index);
 
         var ledger = new List<LedgerLine>();
@@ -90,8 +104,10 @@ public static class BalanceCalculator
         {
             bank += m.Bank;
             cash += m.Cash;
-            ledger.Add(new LedgerLine(m.Date, m.Entry is null ? LedgerLineKind.Expense : LedgerLineKind.Entry,
-                m.Bank, m.Cash, bank, cash, m.Entry, m.Expense));
+            var kind = m.Entry is not null ? LedgerLineKind.Entry
+                : m.Repayment is not null ? LedgerLineKind.CardRepayment
+                : LedgerLineKind.Expense;
+            ledger.Add(new LedgerLine(m.Date, kind, m.Bank, m.Cash, bank, cash, m.Entry, m.Expense, m.Repayment));
         }
 
         decimal Sum(BankCashEntryType type) => entries.Where(e => e.Type == type).Sum(e => e.Amount);
@@ -104,6 +120,8 @@ public static class BalanceCalculator
             Deposits: Sum(BankCashEntryType.Deposit),
             BankExpenses: expenses.Where(x => x.PaymentMethod == PaymentMethod.Bank).Sum(x => x.Amount),
             CashExpenses: expenses.Where(x => x.PaymentMethod == PaymentMethod.Cash).Sum(x => x.Amount),
-            ledger);
+            ledger,
+            CardRepaymentsBank: repayments.Where(r => r.PaidFrom == Account.Bank).Sum(r => r.Amount),
+            CardRepaymentsCash: repayments.Where(r => r.PaidFrom == Account.Cash).Sum(r => r.Amount));
     }
 }

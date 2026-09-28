@@ -243,6 +243,35 @@ public class SettingsService
         CategoriesChanged?.Invoke(this, EventArgs.Empty);
     }
 
+    // ---- Credit card --------------------------------------------------------
+
+    public CardSettings CreditCard => _settings.CreditCard;
+
+    /// <summary>
+    /// Raised after the card's name, limit or due day has been saved.
+    /// </summary>
+    public event EventHandler? CardSettingsChanged;
+
+    /// <summary>
+    /// Saves the card's details. Pass null to clear the limit or due day.
+    /// </summary>
+    public void UpdateCreditCard(string? name, decimal? limit, int? dueDay)
+    {
+        if (limit is < 0)
+            throw new ArgumentException("The credit limit can't be negative.", nameof(limit));
+        if (dueDay is < 1 or > 31)
+            throw new ArgumentException("The due day must be between 1 and 31.", nameof(dueDay));
+
+        var card = _settings.CreditCard;
+        var old = (card.Name, card.Limit, card.DueDay);
+        card.Name = string.IsNullOrWhiteSpace(name) ? "Credit card" : name.Trim();
+        card.Limit = limit is { } l ? Math.Round(l, 2) : null;
+        card.DueDay = dueDay;
+        SaveOrRollBack(() => (card.Name, card.Limit, card.DueDay) = old);
+
+        CardSettingsChanged?.Invoke(this, EventArgs.Empty);
+    }
+
     // ---- Helpers ------------------------------------------------------------
 
     private static AppSettings CreateDefaultSettings() => new() { Categories = CategoryStyles.CreateDefaults() };
@@ -316,6 +345,15 @@ public class SettingsService
                     category.Color = CategoryStyles.DefaultColor;
             }
         }
+
+        settings.CreditCard ??= new CardSettings();
+        var card = settings.CreditCard;
+        if (string.IsNullOrWhiteSpace(card.Name))
+            card.Name = "Credit card";
+        if (card.Limit is < 0)
+            card.Limit = null;
+        if (card.DueDay is < 1 or > 31)
+            card.DueDay = null;
 
         settings.Version = AppSettings.CurrentVersion;
     }
