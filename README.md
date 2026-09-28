@@ -1,0 +1,273 @@
+# Hisaab Kitaab
+
+A personal and family expense tracker for Windows and Linux. It keeps every
+month's accounts in a local Excel workbook (for example `Sept_2026.xlsx`), so
+there's no cloud and no database. You can open the files in Excel or
+LibreOffice at any time.
+
+Built with C# / .NET 8, [Avalonia UI](https://avaloniaui.net/),
+[FluentAvalonia](https://github.com/amwx/FluentAvalonia) (Windows 11 Fluent
+look, light and dark themes), [ClosedXML](https://github.com/ClosedXML/ClosedXML)
+and [LiveCharts2](https://livecharts.dev/).
+
+> **Status:** early development. Dashboard, Settings, Expenses (with search and filters), Bank &
+> Cash, Currency and Credit Card work; the other screens are being built one stage at a time (see *Roadmap* below).
+
+## Where your data lives
+
+| What | Windows | Linux |
+|---|---|---|
+| Settings (family members, …) | `%APPDATA%\HisaabKitaab\settings.json` | `~/.config/HisaabKitaab/settings.json` |
+| Monthly workbooks | `Documents\Hisaab Kitaab\2026\Sept_2026.xlsx` | `~/Documents/Hisaab Kitaab/2026/Sept_2026.xlsx` |
+
+If the settings file ever gets corrupted, the app starts with default settings
+and renames the bad file to `settings.corrupt-<date>.json` instead of deleting it.
+
+**Keeping everything in one folder (portable mode / trying it out):** set the
+`HISAAB_KITAAB_HOME` environment variable to a folder, and the app keeps its
+settings and workbooks there instead (`settings.json` and `Workbooks/`),
+leaving your real data untouched.
+
+```powershell
+$env:HISAAB_KITAAB_HOME = "D:\HisaabTest"; dotnet run --project HisaabKitaab
+```
+
+```bash
+HISAAB_KITAAB_HOME=~/hisaab-test dotnet run --project HisaabKitaab
+```
+
+## Dashboard
+
+The **Dashboard** opens first and shows, for the month you pick:
+
+- **Income** (the "Income to bank" and "Income in cash" entries on Bank &
+  Cash), **Spent** (every expense, however it was paid), **Saved** (the
+  difference, and what share of income that is), and **Bank + cash** right now
+  (with what's owed on the card).
+- **Where the money went**: a doughnut chart and list by category, in each
+  category's colour. Pick a family member above it to see just their spending.
+- **Income and spending over the last 6 months**, and **spending by family
+  member**, as bar charts.
+
+Each workbook also has a **Summary** sheet with the same figures (income,
+spent, remaining, month-end balances, and totals per family member and per
+category) as live Excel formulas. The app rebuilds it on every save, so edit
+the other sheets rather than this one.
+
+## Logging expenses
+
+The **Expenses** screen is built for quick daily entry:
+
+1. Type the amount. Sums work too, e.g. `250+180`.
+2. Press **Enter**. The expense is saved and the cursor goes back to the amount
+   box, ready for the next one.
+
+Category, family member, payment method and date stay as you left them, so a
+run of similar expenses is just amount, Enter, amount, Enter. Use the pencil
+(or double-click a row) to edit, which fills the same form; **Esc** cancels.
+The arrows at the top move between months.
+
+Categories (with their emoji and colour) and family members are managed in
+**Settings**.
+
+### Searching and filtering
+
+- **Search** (Ctrl+F) matches notes, categories, people, payment methods and
+  amounts. Several words must all match, e.g. `jazz sara`.
+- **Filters** narrow by date range, family members, categories, payment method
+  and amount range, all combinable. The date range can span months; there are
+  shortcuts for *This month*, *Last 30 days* and *This year*.
+- The totals at the top always add up what's shown, e.g. "3 of 18 expenses".
+
+Searching works on data held in memory. A workbook is only read again when its
+file changes on disk, so edits made in Excel still show up.
+
+## Bank & Cash
+
+The **Bank & Cash** screen shows your bank balance and cash in hand. You never
+re-enter expenses there:
+
+- Expenses paid in **Cash** come out of cash in hand.
+- Expenses paid by **Bank** come out of the bank balance.
+- **Credit card** expenses touch neither until you repay the card (from the
+  bank or in cash) on the Credit Card screen.
+
+Log the money that moves *between* or *into* them:
+
+| Entry | Bank | Cash |
+|---|---|---|
+| Withdrawal (e.g. ATM) | − | + |
+| Deposit (cash paid in) | + | − |
+| Income to bank (e.g. salary) | + | |
+| Income in cash | | + |
+
+Each month's **opening balance** is last month's closing balance. Click the ✎
+next to it to type in your own figure (for example from a bank statement), or
+to go back to carrying it forward. If cash in hand goes below zero, the screen
+points out the day, since that usually means a withdrawal wasn't logged.
+
+In the workbook, the *Bank & Cash* sheet uses real Excel formulas over the
+transaction log and the Expenses sheet, so the balances stay correct if you
+edit expenses directly in Excel.
+
+## Credit Card
+
+Expenses with Payment Method **Credit Card** are added to what you owe
+automatically. On the **Credit Card** screen you log **repayments**, each
+paid either from the bank or in cash. A repayment reduces what you owe *and*
+comes off that balance on Bank & Cash.
+
+- What's owed carries forward month to month. Click the ✎ to type the figure
+  from your card statement instead.
+- **Card details** (name, credit limit, and the day of the month the bill is
+  due) are set once and apply to every month. The screen then shows how much of
+  the limit you've used, what's still available, and when the next payment is
+  due. It warns when a payment is due within 3 days, when you've used 80% of the
+  limit, or when you're over it.
+- **Pay in full** fills in the whole amount owed.
+
+In the workbook, the *Credit Card* sheet has a formula-driven summary
+(opening, card spending, repayments, outstanding, limit used, available, and
+the due date for that month's bill), the repayment log, and alongside it a
+copy of the month's card expenses from the Expenses sheet (change those on the
+Expenses sheet; the copy is refreshed every time the app saves).
+
+## Currency (cash count)
+
+On the **Currency** screen, enter how many of each note you have (₨ 5,000,
+1,000, 500, 100, 50, 20 and 10) plus any coins. **Tab** moves from one note to
+the next. The total is compared with cash in hand from Bank & Cash **at the
+end of the day you counted**, and the screen says whether it matches, or how
+much more or less cash you have than your records show (differences under
+₨ 1 count as a match).
+
+Counts save automatically a moment after you stop typing, and again when you
+switch screens or close the app. In the workbook, the *Currency
+Denominations* sheet does the same comparison with Excel formulas.
+
+### Editing the workbooks in Excel
+
+You can open and edit the monthly files yourself. The app is built to cope:
+
+- Rows stay sorted by date. The **Payment Method** column has a
+  Cash / Bank / Credit Card dropdown.
+- A hidden **ID** column lets the app find each expense again. Rows you add
+  by hand get an ID the next time the app reads the file.
+- You can reorder columns; they're found by their header names.
+- Rows the app can't understand (for example a date like "someday" or a
+  missing amount) are reported and left untouched, never deleted.
+- Close a workbook in Excel before changing that month in the app. Otherwise
+  the app reports that the file is in use and leaves it unchanged.
+- Renaming a family member in Settings also updates their name in the
+  **current year's** workbooks. Earlier years keep the name they were recorded with.
+- Opening balances that carry forward (bank, cash, card) are rewritten in
+  later months' workbooks whenever an earlier month changes, and again each
+  time the app starts, so every sheet shows current figures in Excel. A
+  workbook that's open in Excel at that moment is caught up next time.
+
+## Requirements
+
+- [.NET 8 SDK](https://dotnet.microsoft.com/download/dotnet/8.0) or newer.
+  Newer SDKs (9, 10) can build it too, but you still need the **.NET 8 runtime**
+  to run it.
+- **Windows:** Windows 10 or 11.
+- **Linux:** an X11 or XWayland desktop. Avalonia also needs fontconfig and a
+  few common libraries:
+
+  ```bash
+  # Debian / Ubuntu
+  sudo apt install libfontconfig1 libice6 libsm6
+  # Fedora
+  sudo dnf install fontconfig libICE libSM
+  ```
+
+## Build and run
+
+From the repository root (the folder containing `HisaabKitaab.sln`):
+
+### Windows (PowerShell)
+
+```powershell
+dotnet restore
+dotnet build
+dotnet run --project HisaabKitaab
+```
+
+### Linux (bash)
+
+```bash
+dotnet restore
+dotnet build
+dotnet run --project HisaabKitaab
+```
+
+### Run the tests
+
+```bash
+dotnet test
+```
+
+## Publish a standalone app
+
+These commands produce a self-contained build, so the target machine doesn't
+need .NET installed.
+
+### Windows
+
+```powershell
+dotnet publish HisaabKitaab -c Release -r win-x64 --self-contained -p:PublishSingleFile=true -o publish/win-x64
+```
+
+Run `publish\win-x64\HisaabKitaab.exe`.
+
+### Linux
+
+```bash
+dotnet publish HisaabKitaab -c Release -r linux-x64 --self-contained -p:PublishSingleFile=true -o publish/linux-x64
+chmod +x publish/linux-x64/HisaabKitaab
+./publish/linux-x64/HisaabKitaab
+```
+
+To add it to your application menu, create
+`~/.local/share/applications/hisaab-kitaab.desktop`:
+
+```ini
+[Desktop Entry]
+Type=Application
+Name=Hisaab Kitaab
+Comment=Monthly family expense tracker
+Exec=/path/to/publish/linux-x64/HisaabKitaab
+Icon=/path/to/HisaabKitaab/Assets/hisaab-kitaab.png
+Categories=Office;Finance;
+```
+
+## Project layout
+
+```
+HisaabKitaab.sln
+HisaabKitaab/
+├── Assets/        App icon (.ico for Windows, .png for Linux)
+├── Models/        Plain data classes (expenses, members, settings, …)
+├── Services/      ExcelService (all ClosedXML code), config, backups, notifications
+├── Styles/        Shared XAML resources (navigation icons)
+├── ViewModels/    CommunityToolkit.Mvvm view models, one per screen
+├── Views/         Avalonia XAML views, one per screen
+├── App.axaml      Theme setup (FluentAvalonia) and view locator registration
+└── Program.cs     Entry point
+HisaabKitaab.Tests/  xUnit tests for services and view models
+```
+
+## Roadmap
+
+1. ✅ Project scaffold and navigation shell
+2. ✅ Settings: family member management, saved to JSON
+3. ✅ ExcelService: monthly workbook creation, Expenses sheet read/write
+4. ✅ Expenses screen: add, edit, delete (plus categories in Settings)
+5. ✅ Search and filter
+6. ✅ Bank & Cash, with automatic deduction from expenses
+7. ✅ Currency denominations
+8. ✅ Credit card, with automatic linking from expenses
+9. ✅ Dashboard with charts (and the Summary sheet)
+10. Budgets, recurring expenses, notifications
+11. Zakat (separate yearly file)
+12. Backups and file protection

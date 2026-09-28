@@ -265,6 +265,22 @@ internal sealed class BankCashSheet
     private int ClosingRow => _openingRow + 7;
 
     /// <summary>
+    /// For other sheets: this sheet's closing balance cell for an account.
+    /// </summary>
+    public string ClosingCell(Account account) =>
+        $"'{SheetName}'!${(account == Account.Bank ? "B" : "C")}${ClosingRow}";
+
+    /// <summary>
+    /// For other sheets: all income logged this month, to bank and in cash.
+    /// </summary>
+    public string IncomeFormula()
+    {
+        string Log(int col) => $"'{SheetName}'!${Letter(col)}${FirstLogRow}:${Letter(col)}${FirstLogRow + FormulaRows}";
+        string Sum(BankCashEntryType type) => $"SUMIFS({Log(ColAmount)},{Log(ColType)},\"{type.ToDisplayName()}\")";
+        return $"{Sum(BankCashEntryType.BankIncome)}+{Sum(BankCashEntryType.CashIncome)}";
+    }
+
+    /// <summary>
     /// Builds the SUMIFS pieces. With <c>qualified</c> set, references to this
     /// sheet carry its name so the formula works from other sheets.
     /// </summary>

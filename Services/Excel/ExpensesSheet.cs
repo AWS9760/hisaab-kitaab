@@ -73,6 +73,10 @@ internal sealed class ExpensesSheet
 
     public int PaymentColumn => _cols[Col.PaymentMethod];
 
+    public int MemberColumn => _cols[Col.FamilyMember];
+
+    public int CategoryColumn => _cols[Col.Category];
+
     public static ExpensesSheet? Find(XLWorkbook workbook, YearMonth month) =>
         workbook.TryGetWorksheet(SheetName, out var ws) ? new ExpensesSheet(ws, month) : null;
 

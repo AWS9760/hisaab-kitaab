@@ -28,7 +28,7 @@ public partial class MainWindow : AppWindow
         e.Cancel = true;
         try
         {
-            await vm.CurrentPage.OnNavigatedFromAsync();
+            await vm.PrepareToCloseAsync();
         }
         finally
         {

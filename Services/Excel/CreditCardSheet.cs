@@ -55,6 +55,11 @@ internal sealed class CreditCardSheet
     private int DueRow => _openingRow + 9;
     private int FirstLogRow => _logHeaderRow + 1;
 
+    /// <summary>
+    /// For other sheets: the cell holding what's owed at month end.
+    /// </summary>
+    public string OwedCell() => $"'{SheetName}'!$B${OwedRow}";
+
     public static CreditCardSheet? Find(XLWorkbook workbook, YearMonth month)
     {
         if (!workbook.TryGetWorksheet(SheetName, out var ws))

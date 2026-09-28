@@ -23,6 +23,10 @@
     <AvaloniaResource Include="Assets\**" />
   </ItemGroup>
 
+  <ItemGroup>
+    <InternalsVisibleTo Include="HisaabKitaab.Tests" />
+  </ItemGroup>
+
   <!--
     Version notes:
     FluentAvaloniaUI 2.5+/3.x target net10.0 only, so 2.4.1 is the newest release usable on .NET 8.

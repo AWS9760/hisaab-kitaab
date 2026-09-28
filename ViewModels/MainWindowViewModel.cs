@@ -11,6 +11,7 @@ public partial class MainWindowViewModel : ViewModelBase
     private readonly IDialogService _dialogs;
     private readonly ExcelService _excel;
     private readonly WorkbookStore _store;
+    private readonly CarryForwardService _carryForward;
     private readonly ILauncherService _launcher;
 
     [ObservableProperty]
@@ -25,10 +26,26 @@ public partial class MainWindowViewModel : ViewModelBase
         _dialogs = dialogs;
         _excel = excel;
         _store = new WorkbookStore(excel);
+        _carryForward = new CarryForwardService(_store);
         _launcher = launcher;
 
         _currentPage = GetOrCreatePage(AppPage.Dashboard);
         _currentPageKey = AppPage.Dashboard;
+        _currentPage.OnNavigatedTo();
+
+        // Bring carried-forward figures in every workbook up to date, in the background.
+        _carryForward.StartSyncAll();
+    }
+
+    /// <summary>
+    /// Lets the current page save anything pending and gives background work a
+    /// moment to finish before the app closes.
+    /// </summary>
+    public async Task PrepareToCloseAsync()
+    {
+        await CurrentPage.OnNavigatedFromAsync();
+        await Task.WhenAny(_carryForward.IdleAsync(), Task.Delay(TimeSpan.FromSeconds(3)));
+        _carryForward.Dispose();
     }
 
     public void NavigateTo(AppPage page)
@@ -45,7 +62,7 @@ public partial class MainWindowViewModel : ViewModelBase
         {
             vm = page switch
             {
-                AppPage.Dashboard => new DashboardViewModel(),
+                AppPage.Dashboard => new DashboardViewModel(new DashboardService(_store), _settings),
                 AppPage.Expenses => new ExpensesViewModel(_store, _settings, _dialogs, _launcher),
                 AppPage.BankCash => new BankCashViewModel(new BankCashService(_store), _settings, _dialogs, _launcher),
                 AppPage.Currency => new CurrencyViewModel(new BankCashService(_store), _launcher),

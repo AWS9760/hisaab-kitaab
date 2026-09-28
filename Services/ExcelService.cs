@@ -27,6 +27,18 @@ public class ExcelService
 
     private readonly Func<CardSettings>? _cardSettings;
 
+    // Every operation opens a workbook, changes it and saves it. Two running at
+    // once on the same file (e.g. a background sync and the user adding an
+    // expense) would each save their own copy and one change would be lost, so
+    // they take turns. Reentrant: operations that call others are fine.
+    private readonly object _gate = new();
+
+    /// <summary>
+    /// Raised after a monthly workbook has been saved, on the thread that saved it.
+    /// Later months' carried-forward figures may need updating after this.
+    /// </summary>
+    public event Action<YearMonth>? MonthSaved;
+
     /// <param name="cardSettings">
     /// Supplies the credit card's limit and due day for the Credit Card sheet.
     /// Read at each save, so changes in Settings show up the next time a month is saved.
@@ -75,13 +87,16 @@ public class ExcelService
     /// </summary>
     public bool EnsureMonthWorkbook(YearMonth month)
     {
-        var path = GetMonthFilePath(month);
-        if (File.Exists(path))
-            return false;
+        lock (_gate)
+        {
+            var path = GetMonthFilePath(month);
+            if (File.Exists(path))
+                return false;
 
-        using var workbook = CreateWorkbook(month);
-        Save(workbook, path);
-        return true;
+            using var workbook = CreateWorkbook(month);
+            Save(workbook, path);
+            return true;
+        }
     }
 
     /// <summary>
@@ -91,29 +106,32 @@ public class ExcelService
     /// </summary>
     public ExpenseSheetData LoadExpenses(YearMonth month)
     {
-        var path = GetMonthFilePath(month);
-        if (!File.Exists(path))
-            return new ExpenseSheetData(month, false, Array.Empty<Expense>(), Array.Empty<SheetProblem>());
-
-        using var workbook = Open(path);
-        var sheet = ExpensesSheet.GetOrCreate(workbook, month);
-        var (expenses, problems) = sheet.ReadAll();
-
-        if (sheet.IsModified)
+        lock (_gate)
         {
-            // New IDs were assigned to rows added by hand. Save them so later
-            // edits can find those rows. If the file is open in Excel we carry on;
-            // the IDs are just temporary until the next successful save.
-            try
-            {
-                Save(workbook, path);
-            }
-            catch (WorkbookLockedException)
-            {
-            }
-        }
+            var path = GetMonthFilePath(month);
+            if (!File.Exists(path))
+                return new ExpenseSheetData(month, false, Array.Empty<Expense>(), Array.Empty<SheetProblem>());
 
-        return new ExpenseSheetData(month, true, expenses, problems);
+            using var workbook = Open(path);
+            var sheet = ExpensesSheet.GetOrCreate(workbook, month);
+            var (expenses, problems) = sheet.ReadAll();
+
+            if (sheet.IsModified)
+            {
+                // New IDs were assigned to rows added by hand. Save them so later
+                // edits can find those rows. If the file is open in Excel we carry on;
+                // the IDs are just temporary until the next successful save.
+                try
+                {
+                    Save(workbook, path);
+                }
+                catch (WorkbookLockedException)
+                {
+                }
+            }
+
+            return new ExpenseSheetData(month, true, expenses, problems);
+        }
     }
 
     /// <summary>
@@ -122,17 +140,20 @@ public class ExcelService
     /// </summary>
     public Expense AddExpense(Expense expense)
     {
-        expense = Normalize(expense);
-        if (expense.Id == Guid.Empty)
-            expense = expense with { Id = Guid.NewGuid() };
+        lock (_gate)
+        {
+            expense = Normalize(expense);
+            if (expense.Id == Guid.Empty)
+                expense = expense with { Id = Guid.NewGuid() };
 
-        var month = YearMonth.Of(expense.Date);
-        var path = GetMonthFilePath(month);
+            var month = YearMonth.Of(expense.Date);
+            var path = GetMonthFilePath(month);
 
-        using var workbook = File.Exists(path) ? Open(path) : CreateWorkbook(month);
-        ExpensesSheet.GetOrCreate(workbook, month).Insert(expense);
-        Save(workbook, path);
-        return expense;
+            using var workbook = File.Exists(path) ? Open(path) : CreateWorkbook(month);
+            ExpensesSheet.GetOrCreate(workbook, month).Insert(expense);
+            Save(workbook, path);
+            return expense;
+        }
     }
 
     /// <summary>
@@ -143,54 +164,60 @@ public class ExcelService
     /// <exception cref="KeyNotFoundException">The expense is no longer in the file.</exception>
     public Expense UpdateExpense(YearMonth originalMonth, Expense expense)
     {
-        expense = Normalize(expense);
-        if (expense.Id == Guid.Empty)
-            throw new ArgumentException("Expense has no ID.", nameof(expense));
+        lock (_gate)
+        {
+            expense = Normalize(expense);
+            if (expense.Id == Guid.Empty)
+                throw new ArgumentException("Expense has no ID.", nameof(expense));
 
-        var newMonth = YearMonth.Of(expense.Date);
-        if (newMonth == originalMonth)
-        {
-            var path = GetMonthFilePath(originalMonth);
-            using var workbook = OpenExisting(path);
-            if (!ExpensesSheet.GetOrCreate(workbook, originalMonth).Update(expense))
-                throw NotFound(expense.Id, originalMonth);
-            Save(workbook, path);
-            return expense;
-        }
+            var newMonth = YearMonth.Of(expense.Date);
+            if (newMonth == originalMonth)
+            {
+                var path = GetMonthFilePath(originalMonth);
+                using var workbook = OpenExisting(path);
+                if (!ExpensesSheet.GetOrCreate(workbook, originalMonth).Update(expense))
+                    throw NotFound(expense.Id, originalMonth);
+                Save(workbook, path);
+                return expense;
+            }
 
-        // Moving between files: add to the new month first, then remove from the old one.
-        // If the removal fails we undo the add, so the expense is never lost or doubled.
-        EnsureExists(originalMonth, expense.Id);
-        AddExpense(expense);
-        try
-        {
-            DeleteExpense(originalMonth, expense.Id);
-        }
-        catch
-        {
+            // Moving between files: add to the new month first, then remove from the old one.
+            // If the removal fails we undo the add, so the expense is never lost or doubled.
+            EnsureExists(originalMonth, expense.Id);
+            AddExpense(expense);
             try
             {
-                DeleteExpense(newMonth, expense.Id);
+                DeleteExpense(originalMonth, expense.Id);
             }
-            catch (Exception ex) when (ex is IOException or KeyNotFoundException)
+            catch
             {
-                // Report the original failure; the copy in the new month will show up on reload.
+                try
+                {
+                    DeleteExpense(newMonth, expense.Id);
+                }
+                catch (Exception ex) when (ex is IOException or KeyNotFoundException)
+                {
+                    // Report the original failure; the copy in the new month will show up on reload.
+                }
+
+                throw;
             }
 
-            throw;
+            return expense;
         }
-
-        return expense;
     }
 
     /// <exception cref="KeyNotFoundException">The expense is no longer in the file.</exception>
     public void DeleteExpense(YearMonth month, Guid id)
     {
-        var path = GetMonthFilePath(month);
-        using var workbook = OpenExisting(path);
-        if (!ExpensesSheet.GetOrCreate(workbook, month).Delete(id))
-            throw NotFound(id, month);
-        Save(workbook, path);
+        lock (_gate)
+        {
+            var path = GetMonthFilePath(month);
+            using var workbook = OpenExisting(path);
+            if (!ExpensesSheet.GetOrCreate(workbook, month).Delete(id))
+                throw NotFound(id, month);
+            Save(workbook, path);
+        }
     }
 
     // ---- Bank & Cash --------------------------------------------------------
@@ -201,95 +228,107 @@ public class ExcelService
     /// </summary>
     public BankCashSheetData LoadBankCash(YearMonth month)
     {
-        var path = GetMonthFilePath(month);
-        if (!File.Exists(path))
-            return BankCashSheetData.Empty(month);
-
-        using var workbook = Open(path);
-        var sheet = BankCashSheet.Find(workbook, month);
-        if (sheet is null)
-            return BankCashSheetData.Empty(month, fileExists: true);
-
-        var data = sheet.Read();
-        if (sheet.IsModified)
+        lock (_gate)
         {
-            // New IDs for rows added by hand; see LoadExpenses.
-            try
-            {
-                Save(workbook, path);
-            }
-            catch (WorkbookLockedException)
-            {
-            }
-        }
+            var path = GetMonthFilePath(month);
+            if (!File.Exists(path))
+                return BankCashSheetData.Empty(month);
 
-        return data;
+            using var workbook = Open(path);
+            var sheet = BankCashSheet.Find(workbook, month);
+            if (sheet is null)
+                return BankCashSheetData.Empty(month, fileExists: true);
+
+            var data = sheet.Read();
+            if (sheet.IsModified)
+            {
+                // New IDs for rows added by hand; see LoadExpenses.
+                try
+                {
+                    Save(workbook, path);
+                }
+                catch (WorkbookLockedException)
+                {
+                }
+            }
+
+            return data;
+        }
     }
 
     public BankCashEntry AddBankCashEntry(BankCashEntry entry)
     {
-        entry = Normalize(entry);
-        if (entry.Id == Guid.Empty)
-            entry = entry with { Id = Guid.NewGuid() };
+        lock (_gate)
+        {
+            entry = Normalize(entry);
+            if (entry.Id == Guid.Empty)
+                entry = entry with { Id = Guid.NewGuid() };
 
-        var month = YearMonth.Of(entry.Date);
-        var path = GetMonthFilePath(month);
-        using var workbook = File.Exists(path) ? Open(path) : CreateWorkbook(month);
-        BankCashSheet.GetOrCreate(workbook, month).Insert(entry);
-        Save(workbook, path);
-        return entry;
+            var month = YearMonth.Of(entry.Date);
+            var path = GetMonthFilePath(month);
+            using var workbook = File.Exists(path) ? Open(path) : CreateWorkbook(month);
+            BankCashSheet.GetOrCreate(workbook, month).Insert(entry);
+            Save(workbook, path);
+            return entry;
+        }
     }
 
     /// <exception cref="KeyNotFoundException">The entry is no longer in the file.</exception>
     public BankCashEntry UpdateBankCashEntry(YearMonth originalMonth, BankCashEntry entry)
     {
-        entry = Normalize(entry);
-        if (entry.Id == Guid.Empty)
-            throw new ArgumentException("Entry has no ID.", nameof(entry));
-
-        var newMonth = YearMonth.Of(entry.Date);
-        if (newMonth == originalMonth)
+        lock (_gate)
         {
-            var path = GetMonthFilePath(originalMonth);
-            using var workbook = OpenExisting(path);
-            if (!BankCashSheet.GetOrCreate(workbook, originalMonth).Update(entry))
+            entry = Normalize(entry);
+            if (entry.Id == Guid.Empty)
+                throw new ArgumentException("Entry has no ID.", nameof(entry));
+
+            var newMonth = YearMonth.Of(entry.Date);
+            if (newMonth == originalMonth)
+            {
+                var path = GetMonthFilePath(originalMonth);
+                using var workbook = OpenExisting(path);
+                if (!BankCashSheet.GetOrCreate(workbook, originalMonth).Update(entry))
+                    throw EntryNotFound(entry.Id, originalMonth);
+                Save(workbook, path);
+                return entry;
+            }
+
+            // Same approach as moving an expense between months.
+            if (LoadBankCash(originalMonth).Entries.All(e => e.Id != entry.Id))
                 throw EntryNotFound(entry.Id, originalMonth);
-            Save(workbook, path);
-            return entry;
-        }
-
-        // Same approach as moving an expense between months.
-        if (LoadBankCash(originalMonth).Entries.All(e => e.Id != entry.Id))
-            throw EntryNotFound(entry.Id, originalMonth);
-        AddBankCashEntry(entry);
-        try
-        {
-            DeleteBankCashEntry(originalMonth, entry.Id);
-        }
-        catch
-        {
+            AddBankCashEntry(entry);
             try
             {
-                DeleteBankCashEntry(newMonth, entry.Id);
+                DeleteBankCashEntry(originalMonth, entry.Id);
             }
-            catch (Exception ex) when (ex is IOException or KeyNotFoundException)
+            catch
             {
+                try
+                {
+                    DeleteBankCashEntry(newMonth, entry.Id);
+                }
+                catch (Exception ex) when (ex is IOException or KeyNotFoundException)
+                {
+                }
+
+                throw;
             }
 
-            throw;
+            return entry;
         }
-
-        return entry;
     }
 
     /// <exception cref="KeyNotFoundException">The entry is no longer in the file.</exception>
     public void DeleteBankCashEntry(YearMonth month, Guid id)
     {
-        var path = GetMonthFilePath(month);
-        using var workbook = OpenExisting(path);
-        if (!BankCashSheet.GetOrCreate(workbook, month).Delete(id))
-            throw EntryNotFound(id, month);
-        Save(workbook, path);
+        lock (_gate)
+        {
+            var path = GetMonthFilePath(month);
+            using var workbook = OpenExisting(path);
+            if (!BankCashSheet.GetOrCreate(workbook, month).Delete(id))
+                throw EntryNotFound(id, month);
+            Save(workbook, path);
+        }
     }
 
     /// <summary>
@@ -299,13 +338,16 @@ public class ExcelService
     /// </summary>
     public void SetOpeningBalance(YearMonth month, Account account, decimal value, bool isManual)
     {
-        if (Math.Abs(value) >= MaxAmount)
-            throw new ArgumentException("Amount is too large.", nameof(value));
+        lock (_gate)
+        {
+            if (Math.Abs(value) >= MaxAmount)
+                throw new ArgumentException("Amount is too large.", nameof(value));
 
-        var path = GetMonthFilePath(month);
-        using var workbook = File.Exists(path) ? Open(path) : CreateWorkbook(month);
-        BankCashSheet.GetOrCreate(workbook, month).SetOpening(account, Math.Round(value, 2, MidpointRounding.AwayFromZero), isManual);
-        Save(workbook, path);
+            var path = GetMonthFilePath(month);
+            using var workbook = File.Exists(path) ? Open(path) : CreateWorkbook(month);
+            BankCashSheet.GetOrCreate(workbook, month).SetOpening(account, Math.Round(value, 2, MidpointRounding.AwayFromZero), isManual);
+            Save(workbook, path);
+        }
     }
 
     // ---- Currency Denominations -----------------------------------------------
@@ -316,12 +358,15 @@ public class ExcelService
     /// </summary>
     public CurrencySheetData LoadCurrencyCount(YearMonth month)
     {
-        var path = GetMonthFilePath(month);
-        if (!File.Exists(path))
-            return CurrencySheetData.None(month);
+        lock (_gate)
+        {
+            var path = GetMonthFilePath(month);
+            if (!File.Exists(path))
+                return CurrencySheetData.None(month);
 
-        using var workbook = Open(path);
-        return CurrencySheet.Find(workbook, month)?.Read() ?? CurrencySheetData.None(month, fileExists: true);
+            using var workbook = Open(path);
+            return CurrencySheet.Find(workbook, month)?.Read() ?? CurrencySheetData.None(month, fileExists: true);
+        }
     }
 
     /// <summary>
@@ -329,13 +374,16 @@ public class ExcelService
     /// </summary>
     public void SaveCurrencyCount(YearMonth month, CurrencyCount count)
     {
-        if (count.Coins is < 0 || count.Coins >= MaxAmount)
-            throw new ArgumentException("Coins must be zero or more.", nameof(count));
+        lock (_gate)
+        {
+            if (count.Coins is < 0 || count.Coins >= MaxAmount)
+                throw new ArgumentException("Coins must be zero or more.", nameof(count));
 
-        var path = GetMonthFilePath(month);
-        using var workbook = File.Exists(path) ? Open(path) : CreateWorkbook(month);
-        CurrencySheet.GetOrCreate(workbook, month).Write(count with { Coins = Math.Round(count.Coins, 2, MidpointRounding.AwayFromZero) });
-        Save(workbook, path);
+            var path = GetMonthFilePath(month);
+            using var workbook = File.Exists(path) ? Open(path) : CreateWorkbook(month);
+            CurrencySheet.GetOrCreate(workbook, month).Write(count with { Coins = Math.Round(count.Coins, 2, MidpointRounding.AwayFromZero) });
+            Save(workbook, path);
+        }
     }
 
     /// <summary>
@@ -345,12 +393,15 @@ public class ExcelService
     /// </summary>
     public void RefreshMonthWorkbook(YearMonth month)
     {
-        var path = GetMonthFilePath(month);
-        if (!File.Exists(path))
-            return;
+        lock (_gate)
+        {
+            var path = GetMonthFilePath(month);
+            if (!File.Exists(path))
+                return;
 
-        using var workbook = Open(path);
-        Save(workbook, path);
+            using var workbook = Open(path);
+            Save(workbook, path);
+        }
     }
 
     // ---- Credit Card --------------------------------------------------------
@@ -361,94 +412,106 @@ public class ExcelService
     /// </summary>
     public CardSheetData LoadCard(YearMonth month)
     {
-        var path = GetMonthFilePath(month);
-        if (!File.Exists(path))
-            return CardSheetData.Empty(month);
-
-        using var workbook = Open(path);
-        var sheet = CreditCardSheet.Find(workbook, month);
-        if (sheet is null)
-            return CardSheetData.Empty(month, fileExists: true);
-
-        var data = sheet.Read();
-        if (sheet.IsModified)
+        lock (_gate)
         {
-            // New IDs for rows added by hand; see LoadExpenses.
-            try
-            {
-                Save(workbook, path);
-            }
-            catch (WorkbookLockedException)
-            {
-            }
-        }
+            var path = GetMonthFilePath(month);
+            if (!File.Exists(path))
+                return CardSheetData.Empty(month);
 
-        return data;
+            using var workbook = Open(path);
+            var sheet = CreditCardSheet.Find(workbook, month);
+            if (sheet is null)
+                return CardSheetData.Empty(month, fileExists: true);
+
+            var data = sheet.Read();
+            if (sheet.IsModified)
+            {
+                // New IDs for rows added by hand; see LoadExpenses.
+                try
+                {
+                    Save(workbook, path);
+                }
+                catch (WorkbookLockedException)
+                {
+                }
+            }
+
+            return data;
+        }
     }
 
     public CardRepayment AddCardRepayment(CardRepayment repayment)
     {
-        repayment = Normalize(repayment);
-        if (repayment.Id == Guid.Empty)
-            repayment = repayment with { Id = Guid.NewGuid() };
+        lock (_gate)
+        {
+            repayment = Normalize(repayment);
+            if (repayment.Id == Guid.Empty)
+                repayment = repayment with { Id = Guid.NewGuid() };
 
-        var month = YearMonth.Of(repayment.Date);
-        var path = GetMonthFilePath(month);
-        using var workbook = File.Exists(path) ? Open(path) : CreateWorkbook(month);
-        CreditCardSheet.GetOrCreate(workbook, month).Insert(repayment);
-        Save(workbook, path);
-        return repayment;
+            var month = YearMonth.Of(repayment.Date);
+            var path = GetMonthFilePath(month);
+            using var workbook = File.Exists(path) ? Open(path) : CreateWorkbook(month);
+            CreditCardSheet.GetOrCreate(workbook, month).Insert(repayment);
+            Save(workbook, path);
+            return repayment;
+        }
     }
 
     /// <exception cref="KeyNotFoundException">The repayment is no longer in the file.</exception>
     public CardRepayment UpdateCardRepayment(YearMonth originalMonth, CardRepayment repayment)
     {
-        repayment = Normalize(repayment);
-        if (repayment.Id == Guid.Empty)
-            throw new ArgumentException("Repayment has no ID.", nameof(repayment));
-
-        var newMonth = YearMonth.Of(repayment.Date);
-        if (newMonth == originalMonth)
+        lock (_gate)
         {
-            var path = GetMonthFilePath(originalMonth);
-            using var workbook = OpenExisting(path);
-            if (!CreditCardSheet.GetOrCreate(workbook, originalMonth).Update(repayment))
+            repayment = Normalize(repayment);
+            if (repayment.Id == Guid.Empty)
+                throw new ArgumentException("Repayment has no ID.", nameof(repayment));
+
+            var newMonth = YearMonth.Of(repayment.Date);
+            if (newMonth == originalMonth)
+            {
+                var path = GetMonthFilePath(originalMonth);
+                using var workbook = OpenExisting(path);
+                if (!CreditCardSheet.GetOrCreate(workbook, originalMonth).Update(repayment))
+                    throw RepaymentNotFound(repayment.Id, originalMonth);
+                Save(workbook, path);
+                return repayment;
+            }
+
+            if (LoadCard(originalMonth).Repayments.All(r => r.Id != repayment.Id))
                 throw RepaymentNotFound(repayment.Id, originalMonth);
-            Save(workbook, path);
-            return repayment;
-        }
-
-        if (LoadCard(originalMonth).Repayments.All(r => r.Id != repayment.Id))
-            throw RepaymentNotFound(repayment.Id, originalMonth);
-        AddCardRepayment(repayment);
-        try
-        {
-            DeleteCardRepayment(originalMonth, repayment.Id);
-        }
-        catch
-        {
+            AddCardRepayment(repayment);
             try
             {
-                DeleteCardRepayment(newMonth, repayment.Id);
+                DeleteCardRepayment(originalMonth, repayment.Id);
             }
-            catch (Exception ex) when (ex is IOException or KeyNotFoundException)
+            catch
             {
+                try
+                {
+                    DeleteCardRepayment(newMonth, repayment.Id);
+                }
+                catch (Exception ex) when (ex is IOException or KeyNotFoundException)
+                {
+                }
+
+                throw;
             }
 
-            throw;
+            return repayment;
         }
-
-        return repayment;
     }
 
     /// <exception cref="KeyNotFoundException">The repayment is no longer in the file.</exception>
     public void DeleteCardRepayment(YearMonth month, Guid id)
     {
-        var path = GetMonthFilePath(month);
-        using var workbook = OpenExisting(path);
-        if (!CreditCardSheet.GetOrCreate(workbook, month).Delete(id))
-            throw RepaymentNotFound(id, month);
-        Save(workbook, path);
+        lock (_gate)
+        {
+            var path = GetMonthFilePath(month);
+            using var workbook = OpenExisting(path);
+            if (!CreditCardSheet.GetOrCreate(workbook, month).Delete(id))
+                throw RepaymentNotFound(id, month);
+            Save(workbook, path);
+        }
     }
 
     /// <summary>
@@ -457,13 +520,16 @@ public class ExcelService
     /// </summary>
     public void SetCardOpening(YearMonth month, decimal value, bool isManual)
     {
-        if (value < 0 || value >= MaxAmount)
-            throw new ArgumentException("The opening amount owed must be zero or more.", nameof(value));
+        lock (_gate)
+        {
+            if (value < 0 || value >= MaxAmount)
+                throw new ArgumentException("The opening amount owed must be zero or more.", nameof(value));
 
-        var path = GetMonthFilePath(month);
-        using var workbook = File.Exists(path) ? Open(path) : CreateWorkbook(month);
-        CreditCardSheet.GetOrCreate(workbook, month).SetOpening(Math.Round(value, 2, MidpointRounding.AwayFromZero), isManual);
-        Save(workbook, path);
+            var path = GetMonthFilePath(month);
+            using var workbook = File.Exists(path) ? Open(path) : CreateWorkbook(month);
+            CreditCardSheet.GetOrCreate(workbook, month).SetOpening(Math.Round(value, 2, MidpointRounding.AwayFromZero), isManual);
+            Save(workbook, path);
+        }
     }
 
     private static CardRepayment Normalize(CardRepayment repayment)
@@ -520,32 +586,35 @@ public class ExcelService
 
     private RenameResult RenameInYear(int year, Func<ExpensesSheet, int> rename)
     {
-        var updated = new List<string>();
-        var failed = new List<string>();
-        var rows = 0;
-
-        foreach (var month in GetExistingMonths().Where(m => m.Year == year))
+        lock (_gate)
         {
-            var path = GetMonthFilePath(month);
-            try
-            {
-                using var workbook = Open(path);
-                var sheet = ExpensesSheet.Find(workbook, month);
-                var count = sheet is null ? 0 : rename(sheet);
-                if (count == 0)
-                    continue;
+            var updated = new List<string>();
+            var failed = new List<string>();
+            var rows = 0;
 
-                Save(workbook, path);
-                rows += count;
-                updated.Add(month.FileName);
-            }
-            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or InvalidDataException or NotSupportedException)
+            foreach (var month in GetExistingMonths().Where(m => m.Year == year))
             {
-                failed.Add(month.FileName);
+                var path = GetMonthFilePath(month);
+                try
+                {
+                    using var workbook = Open(path);
+                    var sheet = ExpensesSheet.Find(workbook, month);
+                    var count = sheet is null ? 0 : rename(sheet);
+                    if (count == 0)
+                        continue;
+
+                    Save(workbook, path);
+                    rows += count;
+                    updated.Add(month.FileName);
+                }
+                catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or InvalidDataException or NotSupportedException)
+                {
+                    failed.Add(month.FileName);
+                }
             }
+
+            return new RenameResult(rows, updated, failed);
         }
-
-        return new RenameResult(rows, updated, failed);
     }
 
     // ---- Validation ---------------------------------------------------------
@@ -657,6 +726,9 @@ public class ExcelService
             TryDelete(tempPath);
             throw new WorkbookLockedException(path, ex);
         }
+
+        if (month != default)
+            MonthSaved?.Invoke(month);
     }
 
     private static void WriteTo(string tempPath, XLWorkbook workbook, bool evaluateFormulas)
@@ -678,10 +750,13 @@ public class ExcelService
         var currency = CurrencySheet.GetOrCreate(workbook, month);
         var card = CreditCardSheet.GetOrCreate(workbook, month);
 
+        var monthExpenses = expenses.ReadAll().Expenses;
+
         card.SetCardDetails(_cardSettings?.Invoke());
-        card.Refresh(expenses, expenses.ReadAll().Expenses);
+        card.Refresh(expenses, monthExpenses);
         bank.RefreshFormulas(expenses, card);
         currency.RefreshFormulas(bank, card, expenses);
+        SummarySheet.Rebuild(workbook, month, expenses, bank, card, monthExpenses);
 
         // Excel recalculates everything when the file is opened.
         workbook.FullCalculationOnLoad = true;

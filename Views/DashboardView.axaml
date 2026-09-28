@@ -4,21 +4,188 @@
              xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
              xmlns:ui="using:FluentAvalonia.UI.Controls"
              xmlns:vm="using:HisaabKitaab.ViewModels"
-             mc:Ignorable="d" d:DesignWidth="900" d:DesignHeight="600"
+             xmlns:views="using:HisaabKitaab.Views"
+             xmlns:lvc="using:LiveChartsCore.SkiaSharpView.Avalonia"
+             mc:Ignorable="d" d:DesignWidth="1000" d:DesignHeight="900"
              x:Class="HisaabKitaab.Views.DashboardView"
              x:DataType="vm:DashboardViewModel">
-    <Design.DataContext>
-        <vm:DashboardViewModel />
-    </Design.DataContext>
 
-    <StackPanel Margin="32,24" Spacing="8">
-        <TextBlock Text="{Binding Title}" Theme="{StaticResource TitleTextBlockStyle}" />
-        <TextBlock Text="{Binding Description}" Theme="{StaticResource BodyTextBlockStyle}" Opacity="0.75" />
-        <ui:InfoBar Margin="0,16,0,0"
-                    IsOpen="True"
-                    IsClosable="False"
-                    Severity="Informational"
-                    Title="Not built yet"
-                    Message="This screen arrives in stage 9 of the build plan." />
-    </StackPanel>
+    <UserControl.Styles>
+        <Style Selector="TextBlock.tileValue">
+            <Setter Property="FontSize" Value="24" />
+            <Setter Property="FontWeight" Value="SemiBold" />
+            <Setter Property="Margin" Value="0,2" />
+        </Style>
+        <Style Selector="TextBlock.tileNote">
+            <Setter Property="FontSize" Value="12" />
+            <Setter Property="Opacity" Value="0.7" />
+            <Setter Property="TextWrapping" Value="Wrap" />
+        </Style>
+        <Style Selector="TextBlock.empty">
+            <Setter Property="Opacity" Value="0.6" />
+            <Setter Property="HorizontalAlignment" Value="Center" />
+            <Setter Property="VerticalAlignment" Value="Center" />
+            <Setter Property="TextWrapping" Value="Wrap" />
+            <Setter Property="TextAlignment" Value="Center" />
+        </Style>
+    </UserControl.Styles>
+
+    <ScrollViewer>
+        <StackPanel Margin="32,24,32,24" Spacing="12">
+
+            <!-- Header -->
+            <Grid ColumnDefinitions="*,Auto" Margin="0,0,0,4">
+                <StackPanel Spacing="4" VerticalAlignment="Center">
+                    <TextBlock Text="{Binding Title}" Theme="{StaticResource TitleTextBlockStyle}" />
+                    <TextBlock Text="{Binding Description}" Opacity="0.75" />
+                </StackPanel>
+                <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
+                    <Button Theme="{StaticResource TransparentButton}" Command="{Binding PreviousMonthCommand}"
+                            ToolTip.Tip="Previous month" AutomationProperties.Name="Previous month">
+                        <ui:SymbolIcon Symbol="ChevronLeft" FontSize="16" />
+                    </Button>
+                    <TextBlock Text="{Binding MonthTitle}" Theme="{StaticResource SubtitleTextBlockStyle}"
+                               MinWidth="180" TextAlignment="Center" VerticalAlignment="Center" />
+                    <Button Theme="{StaticResource TransparentButton}" Command="{Binding NextMonthCommand}"
+                            ToolTip.Tip="Next month" AutomationProperties.Name="Next month">
+                        <ui:SymbolIcon Symbol="ChevronRight" FontSize="16" />
+                    </Button>
+                    <Button Content="This month" Command="{Binding GoToThisMonthCommand}" IsVisible="{Binding !IsCurrentMonth}" />
+                    <Button Command="{Binding ReloadCommand}" ToolTip.Tip="Reload from files" AutomationProperties.Name="Reload from files">
+                        <ui:SymbolIcon Symbol="Refresh" FontSize="16" />
+                    </Button>
+                </StackPanel>
+            </Grid>
+
+            <!-- Tiles -->
+            <Grid ColumnDefinitions="*,12,*,12,*,12,*">
+                <Border Classes="card" Padding="18,14">
+                    <StackPanel>
+                        <TextBlock Classes="caption" Text="💼 Income" />
+                        <TextBlock Classes="tileValue" Text="{Binding IncomeText}" />
+                        <TextBlock Classes="tileNote" Text="{Binding IncomeNote}" />
+                    </StackPanel>
+                </Border>
+                <Border Grid.Column="2" Classes="card" Padding="18,14">
+                    <StackPanel>
+                        <TextBlock Classes="caption" Text="🧾 Spent" />
+                        <TextBlock Classes="tileValue" Text="{Binding SpentText}" />
+                        <TextBlock Classes="tileNote" Text="{Binding SpentNote}" />
+                    </StackPanel>
+                </Border>
+                <Border Grid.Column="4" Classes="card" Padding="18,14">
+                    <StackPanel>
+                        <TextBlock Classes="caption" Text="🐷 Saved" />
+                        <TextBlock Classes="tileValue" Text="{Binding SavedText}" Classes.negative="{Binding IsSavedNegative}" />
+                        <TextBlock Classes="tileNote" Text="{Binding SavedNote}" />
+                    </StackPanel>
+                </Border>
+                <Border Grid.Column="6" Classes="card" Padding="18,14">
+                    <StackPanel>
+                        <TextBlock Classes="caption" Text="🏦 Bank + cash now" />
+                        <TextBlock Classes="tileValue" Text="{Binding MoneyText}" />
+                        <TextBlock Classes="tileNote" Text="{Binding MoneyNote}" />
+                    </StackPanel>
+                </Border>
+            </Grid>
+
+            <!-- Spending by category, for everyone or one family member -->
+            <Border Classes="card" Padding="18,14">
+                <StackPanel Spacing="10">
+                    <Grid ColumnDefinitions="*,Auto">
+                        <StackPanel>
+                            <TextBlock Text="Where the money went" Theme="{StaticResource SubtitleTextBlockStyle}" />
+                            <TextBlock Text="{Binding CategoryTotalText}" Opacity="0.75" />
+                        </StackPanel>
+                        <ListBox Grid.Column="1" x:Name="MemberPicker" Classes="segmented" VerticalAlignment="Center"
+                                 ItemsSource="{Binding MemberOptions}" SelectedItem="{Binding SelectedMember}"
+                                 AutomationProperties.Name="Show spending for">
+                            <ListBox.ItemsPanel>
+                                <ItemsPanelTemplate>
+                                    <WrapPanel />
+                                </ItemsPanelTemplate>
+                            </ListBox.ItemsPanel>
+                            <ListBox.ItemTemplate>
+                                <DataTemplate x:DataType="vm:MemberFilterOption">
+                                    <TextBlock Text="{Binding Label}" />
+                                </DataTemplate>
+                            </ListBox.ItemTemplate>
+                        </ListBox>
+                    </Grid>
+
+                    <Grid ColumnDefinitions="280,24,*" Height="280" IsVisible="{Binding HasCategoryData}">
+                        <lvc:PieChart Series="{Binding CategorySeries}" LegendPosition="Hidden" TooltipPosition="Center"
+                                      AutomationProperties.Name="Spending by category chart" />
+                        <ScrollViewer Grid.Column="2" VerticalAlignment="Center">
+                            <ItemsControl ItemsSource="{Binding CategoryLegend}">
+                                <ItemsControl.ItemsPanel>
+                                    <ItemsPanelTemplate>
+                                        <StackPanel Spacing="6" />
+                                    </ItemsPanelTemplate>
+                                </ItemsControl.ItemsPanel>
+                                <ItemsControl.ItemTemplate>
+                                    <DataTemplate x:DataType="vm:CategoryLegendRow">
+                                        <Grid ColumnDefinitions="Auto,*,Auto,56">
+                                            <Border Width="26" Height="26" CornerRadius="13"
+                                                    Background="{Binding Color, Converter={x:Static views:AppConverters.HexToTint}}"
+                                                    BorderBrush="{Binding Color, Converter={x:Static views:AppConverters.HexToBrush}}"
+                                                    BorderThickness="1.5">
+                                                <TextBlock Text="{Binding Icon}" FontSize="12"
+                                                           HorizontalAlignment="Center" VerticalAlignment="Center" />
+                                            </Border>
+                                            <TextBlock Grid.Column="1" Text="{Binding Name}" Margin="10,0" VerticalAlignment="Center" />
+                                            <TextBlock Grid.Column="2" Text="{Binding AmountText}" FontWeight="SemiBold" VerticalAlignment="Center" />
+                                            <TextBlock Grid.Column="3" Text="{Binding ShareText}" Opacity="0.6"
+                                                       HorizontalAlignment="Right" VerticalAlignment="Center" />
+                                        </Grid>
+                                    </DataTemplate>
+                                </ItemsControl.ItemTemplate>
+                            </ItemsControl>
+                        </ScrollViewer>
+                    </Grid>
+                    <TextBlock Classes="empty" Margin="0,40" IsVisible="{Binding !HasCategoryData}"
+                               Text="No spending this month yet. Add expenses on the Expenses page and they'll show up here." />
+                </StackPanel>
+            </Border>
+
+            <!-- Trend and per member -->
+            <Grid ColumnDefinitions="3*,12,2*">
+                <Border Classes="card" Padding="18,14">
+                    <StackPanel Spacing="8">
+                        <Grid ColumnDefinitions="*,Auto">
+                            <TextBlock Text="Income and spending, last 6 months" Theme="{StaticResource BodyStrongTextBlockStyle}" />
+                            <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="12">
+                                <StackPanel Orientation="Horizontal" Spacing="4">
+                                    <Border Width="10" Height="10" CornerRadius="2" Background="#0D9488" VerticalAlignment="Center" />
+                                    <TextBlock Text="Income" FontSize="12" Opacity="0.8" />
+                                </StackPanel>
+                                <StackPanel Orientation="Horizontal" Spacing="4">
+                                    <Border Width="10" Height="10" CornerRadius="2" Background="#F97316" VerticalAlignment="Center" />
+                                    <TextBlock Text="Spent" FontSize="12" Opacity="0.8" />
+                                </StackPanel>
+                            </StackPanel>
+                        </Grid>
+                        <Grid Height="240">
+                            <lvc:CartesianChart Series="{Binding TrendSeries}" XAxes="{Binding TrendXAxes}" YAxes="{Binding TrendYAxes}"
+                                                LegendPosition="Hidden" TooltipPosition="Top" IsVisible="{Binding HasTrendData}"
+                                                AutomationProperties.Name="Income and spending by month chart" />
+                            <TextBlock Classes="empty" IsVisible="{Binding !HasTrendData}"
+                                       Text="Nothing recorded in these months yet." />
+                        </Grid>
+                    </StackPanel>
+                </Border>
+                <Border Grid.Column="2" Classes="card" Padding="18,14">
+                    <StackPanel Spacing="8">
+                        <TextBlock Text="Spending by family member" Theme="{StaticResource BodyStrongTextBlockStyle}" />
+                        <Grid Height="240">
+                            <lvc:CartesianChart Series="{Binding MemberSeries}" XAxes="{Binding MemberXAxes}" YAxes="{Binding MemberYAxes}"
+                                                LegendPosition="Hidden" TooltipPosition="Top" IsVisible="{Binding HasMemberData}"
+                                                AutomationProperties.Name="Spending by family member chart" />
+                            <TextBlock Classes="empty" IsVisible="{Binding !HasMemberData}" Text="No spending this month yet." />
+                        </Grid>
+                    </StackPanel>
+                </Border>
+            </Grid>
+        </StackPanel>
+    </ScrollViewer>
 </UserControl>
