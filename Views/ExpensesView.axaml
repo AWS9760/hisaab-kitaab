@@ -68,23 +68,32 @@
             </Grid>
         </Border>
 
-        <!-- Rows in the workbook that couldn't be read -->
-        <ui:InfoBar Grid.Row="2" Margin="0,0,0,12"
-                    IsOpen="{Binding HasProblems}" IsVisible="{Binding HasProblems}"
-                    IsClosable="False" Severity="Warning"
-                    Title="Some rows need fixing"
-                    Message="{Binding ProblemSummary}">
-            <ui:InfoBar.ActionButton>
-                <Button Content="Open in Excel" Command="{Binding OpenWorkbookCommand}" />
-            </ui:InfoBar.ActionButton>
-            <ItemsControl ItemsSource="{Binding ProblemLines}" Margin="0,0,0,8">
-                <ItemsControl.ItemTemplate>
-                    <DataTemplate x:DataType="x:String">
-                        <TextBlock FontSize="12" TextWrapping="Wrap" Text="{Binding}" />
-                    </DataTemplate>
-                </ItemsControl.ItemTemplate>
-            </ItemsControl>
-        </ui:InfoBar>
+        <StackPanel Grid.Row="2">
+            <!-- Recurring expenses added automatically since the page was last shown -->
+            <ui:InfoBar Margin="0,0,0,12"
+                        IsOpen="{Binding HasRecurringNotice}" IsVisible="{Binding HasRecurringNotice}"
+                        IsClosable="True" CloseButtonCommand="{Binding DismissRecurringNoticeCommand}"
+                        Severity="Informational" Title="Recurring"
+                        Message="{Binding RecurringNotice}" />
+
+            <!-- Rows in the workbook that couldn't be read -->
+            <ui:InfoBar Margin="0,0,0,12"
+                        IsOpen="{Binding HasProblems}" IsVisible="{Binding HasProblems}"
+                        IsClosable="False" Severity="Warning"
+                        Title="Some rows need fixing"
+                        Message="{Binding ProblemSummary}">
+                <ui:InfoBar.ActionButton>
+                    <Button Content="Open in Excel" Command="{Binding OpenWorkbookCommand}" />
+                </ui:InfoBar.ActionButton>
+                <ItemsControl ItemsSource="{Binding ProblemLines}" Margin="0,0,0,8">
+                    <ItemsControl.ItemTemplate>
+                        <DataTemplate x:DataType="x:String">
+                            <TextBlock FontSize="12" TextWrapping="Wrap" Text="{Binding}" />
+                        </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                </ItemsControl>
+            </ui:InfoBar>
+        </StackPanel>
 
         <!-- Quick add / edit form -->
         <Border Grid.Row="3" Classes="card" Padding="16" Margin="0,0,0,12">
@@ -193,6 +202,11 @@
                 <ui:InfoBar IsOpen="{Binding HasError}" IsVisible="{Binding HasError}"
                             IsClosable="False" Severity="Error"
                             Message="{Binding ErrorMessage}" />
+
+                <!-- The expense just saved took a budget near or over its limit -->
+                <ui:InfoBar IsOpen="{Binding HasBudgetWarning}" IsVisible="{Binding HasBudgetWarning}"
+                            IsClosable="False" Severity="Warning"
+                            Message="{Binding BudgetWarning}" />
 
                 <TextBlock FontSize="12" Opacity="0.6" IsVisible="{Binding !HasMembers}"
                            Text="Tip: add your family members in Settings to pick who spent it." />

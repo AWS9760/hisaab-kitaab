@@ -20,7 +20,8 @@ public partial class SettingsViewModel : PageViewModelBase
     [NotifyPropertyChangedFor(nameof(HasError))]
     private string? _errorMessage;
 
-    public SettingsViewModel(SettingsService settings, IDialogService dialogs, ExcelService excel, TimeProvider? clock = null)
+    public SettingsViewModel(SettingsService settings, IDialogService dialogs, ExcelService excel, TimeProvider? clock = null,
+        ReminderService? reminders = null)
     {
         _settings = settings;
         _dialogs = dialogs;
@@ -33,11 +34,20 @@ public partial class SettingsViewModel : PageViewModelBase
         Members.CollectionChanged += (_, _) => OnPropertyChanged(nameof(HasMembers));
 
         Categories = new CategorySettingsViewModel(settings, dialogs, excel, _clock);
+        Budgets = new BudgetSettingsViewModel(settings);
+        Recurring = new RecurringSettingsViewModel(settings, dialogs, _clock, reminders is null ? null : reminders.CheckAsync);
+        Notifications = new NotificationSettingsViewModel(settings, reminders);
     }
 
     public override string Title => "Settings";
 
-    public override string Description => "Family members, categories and app preferences.";
+    public override string Description => "Family members, categories, budgets, recurring expenses and notifications.";
+
+    public BudgetSettingsViewModel Budgets { get; }
+
+    public RecurringSettingsViewModel Recurring { get; }
+
+    public NotificationSettingsViewModel Notifications { get; }
 
     public ObservableCollection<FamilyMemberItemViewModel> Members { get; } = new();
 
@@ -181,4 +191,27 @@ internal static class SettingsSave
 
     public static bool Try(Action action, out string? error) =>
         Try(() => { action(); return true; }, out _, out error);
+
+    /// <summary>
+    /// Like <see cref="Try(Action, out string?)"/>, but also turns validation
+    /// errors (ArgumentException) and missing items into messages.
+    /// </summary>
+    public static bool TryAny(Action action, out string? error)
+    {
+        try
+        {
+            if (Try(action, out error))
+                return true;
+        }
+        catch (ArgumentException ex)
+        {
+            error = ex.ParamName is null ? ex.Message : ex.Message.Replace($" (Parameter '{ex.ParamName}')", string.Empty);
+        }
+        catch (KeyNotFoundException)
+        {
+            error = "That item no longer exists; it may have been removed.";
+        }
+
+        return false;
+    }
 }

@@ -1,0 +1,59 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:ui="using:FluentAvalonia.UI.Controls"
+             xmlns:vm="using:HisaabKitaab.ViewModels"
+             x:Class="HisaabKitaab.Views.Settings.NotificationsSection"
+             x:DataType="vm:NotificationSettingsViewModel">
+
+    <!-- Uses the card style from SettingsView. -->
+    <Border Classes="card">
+        <StackPanel Spacing="14">
+            <StackPanel Spacing="2">
+                <TextBlock Text="Notifications" Theme="{StaticResource SubtitleTextBlockStyle}" />
+                <TextBlock Text="{Binding AvailabilityText}" TextWrapping="Wrap" Opacity="0.75" />
+            </StackPanel>
+
+            <Grid ColumnDefinitions="*,Auto">
+                <StackPanel VerticalAlignment="Center">
+                    <TextBlock Text="Daily reminder to log expenses" />
+                    <TextBlock Text="Only if nothing has been added that day." FontSize="12" Opacity="0.7" />
+                </StackPanel>
+                <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="12">
+                    <TimePicker SelectedTime="{Binding ReminderTime}" IsEnabled="{Binding DailyReminder}" MinuteIncrement="15"
+                                AutomationProperties.Name="Reminder time" />
+                    <ToggleSwitch IsChecked="{Binding DailyReminder}" OnContent="On" OffContent="Off" MinWidth="0" />
+                </StackPanel>
+            </Grid>
+
+            <Grid ColumnDefinitions="*,Auto">
+                <StackPanel VerticalAlignment="Center">
+                    <TextBlock Text="Credit card payment reminder" />
+                    <TextBlock Text="When something is owed and the due day (set on the Credit Card page) is close." FontSize="12" Opacity="0.7"
+                               TextWrapping="Wrap" />
+                </StackPanel>
+                <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="12">
+                    <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
+                        <ui:NumberBox Value="{Binding CardDueDaysBefore, Mode=TwoWay}" Minimum="0" Maximum="30" Width="110"
+                                      SpinButtonPlacementMode="Inline" IsEnabled="{Binding CardDueReminder}"
+                                      AutomationProperties.Name="Days before the due date" />
+                        <TextBlock Text="days before" VerticalAlignment="Center" Opacity="0.8" />
+                    </StackPanel>
+                    <ToggleSwitch IsChecked="{Binding CardDueReminder}" OnContent="On" OffContent="Off" MinWidth="0" />
+                </StackPanel>
+            </Grid>
+
+            <Grid ColumnDefinitions="*,Auto">
+                <StackPanel VerticalAlignment="Center">
+                    <TextBlock Text="Budget exceeded" />
+                    <TextBlock Text="The first time a budget goes over in a month." FontSize="12" Opacity="0.7" />
+                </StackPanel>
+                <ToggleSwitch Grid.Column="1" IsChecked="{Binding BudgetAlerts}" OnContent="On" OffContent="Off" MinWidth="0" />
+            </Grid>
+
+            <StackPanel Orientation="Horizontal" Spacing="12">
+                <Button Content="Send a test notification" Command="{Binding SendTestCommand}" IsEnabled="{Binding IsAvailable}" />
+                <TextBlock Text="{Binding Message}" VerticalAlignment="Center" Opacity="0.8" TextWrapping="Wrap" />
+            </StackPanel>
+        </StackPanel>
+    </Border>
+</UserControl>

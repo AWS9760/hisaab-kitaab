@@ -20,6 +20,12 @@ public class AppSettings
 
     public CardSettings CreditCard { get; set; } = new();
 
+    public List<Budget> Budgets { get; set; } = new();
+
+    public List<RecurringExpense> Recurring { get; set; } = new();
+
+    public NotificationSettings Notifications { get; set; } = new();
+
     /// <summary>
     /// Where the monthly workbooks are kept. Null means the default
     /// (Documents/Hisaab Kitaab).

@@ -1,6 +1,7 @@
 using Avalonia.Controls;
 using FluentAvalonia.UI.Controls;
 using FluentAvalonia.UI.Windowing;
+using HisaabKitaab.Services;
 using HisaabKitaab.ViewModels;
 
 namespace HisaabKitaab.Views;
@@ -15,6 +16,19 @@ public partial class MainWindow : AppWindow
 
         // Selecting the first item raises SelectionChanged, which loads the Dashboard.
         NavView.SelectedItem = NavView.MenuItems.OfType<NavigationViewItem>().First();
+    }
+
+    protected override void OnOpened(EventArgs e)
+    {
+        base.OnOpened(e);
+        if (DataContext is not MainWindowViewModel vm)
+            return;
+
+        // Windows notifications come from a notification-area icon owned by this window.
+        if (vm.Notifier is WindowsNotifier windows && TryGetPlatformHandle()?.Handle is { } handle)
+            windows.AttachTo(handle);
+
+        vm.StartBackgroundWork();
     }
 
     protected override async void OnClosing(WindowClosingEventArgs e)
@@ -32,6 +46,7 @@ public partial class MainWindow : AppWindow
         }
         finally
         {
+            (vm.Notifier as IDisposable)?.Dispose();
             _readyToClose = true;
             Close();
         }

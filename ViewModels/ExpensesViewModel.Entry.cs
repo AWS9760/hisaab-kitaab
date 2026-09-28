@@ -63,8 +63,25 @@ public partial class ExpensesViewModel
     /// </summary>
     public event EventHandler? EntryFocusRequested;
 
-    // Typing again clears the last "Added …" message.
-    partial void OnEntryAmountChanged(double value) => StatusMessage = null;
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(HasBudgetWarning))]
+    private string? _budgetWarning;
+
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(HasRecurringNotice))]
+    private string? _recurringNotice;
+
+    public bool HasBudgetWarning => BudgetWarning is not null;
+
+    public bool HasRecurringNotice => RecurringNotice is not null;
+
+    // Typing again clears the last "Added …" message and budget warning.
+    partial void OnEntryAmountChanged(double value)
+    {
+        StatusMessage = null;
+        if (!double.IsNaN(value))
+            BudgetWarning = null;
+    }
 
     partial void OnEntryNoteChanged(string value) => StatusMessage = null;
 
@@ -135,6 +152,7 @@ public partial class ExpensesViewModel
                 : IsInRange(saved.Date) ? " (hidden by your search or filters)"
                 : $" in {YearMonth.Of(saved.Date).DisplayName}";
             StatusMessage = editing is null ? $"Added {what}{where}." : $"Saved {what}{where}.";
+            BudgetWarning = BudgetWarningFor(saved);
             EntryFocusRequested?.Invoke(this, EventArgs.Empty);
         }
         catch (ArgumentException ex)
@@ -167,6 +185,40 @@ public partial class ExpensesViewModel
                 (EntryAmount, EntryNote) = (typedAmount, typedNote);
         }
     }
+
+    /// <summary>
+    /// A warning if the saved expense took one of its budgets near or over the limit.
+    /// </summary>
+    private string? BudgetWarningFor(Expense saved)
+    {
+        var month = YearMonth.Of(saved.Date);
+        var hits = BudgetService.Calculate(_settings.ResolvedBudgets(), _store.LoadMonth(month).Expenses)
+            .Where(s => s.Budget.Covers(saved) && s.Level != BudgetLevel.Fine)
+            .ToList();
+        if (hits.Count == 0)
+            return null;
+
+        return string.Join(" ", hits.Select(s => s.Level == BudgetLevel.Over
+            ? $"{s.Budget.Label} is over budget for {month.DisplayName}: {Pkr.Format(s.Spent)} of {Pkr.Format(s.Budget.Amount)}."
+            : $"{s.Budget.Label} has used {DashboardViewModel.Percent(s.Share)} of its {Pkr.Format(s.Budget.Amount)} budget."));
+    }
+
+    /// <summary>
+    /// Shows which recurring expenses were just added automatically, and reloads.
+    /// </summary>
+    public void ShowRecurringAdded(RecurringRunResult result)
+    {
+        if (result.Added.Count == 0)
+            return;
+
+        RecurringNotice = "Added automatically: " + string.Join(", ", result.Added.Select(e =>
+            $"{e.Note} {Pkr.Format(e.Amount)} ({e.Date.ToString("d MMM", CultureInfo.InvariantCulture)})")) + ".";
+        if (_hasLoaded)
+            _ = LoadAsync();
+    }
+
+    [RelayCommand]
+    private void DismissRecurringNotice() => RecurringNotice = null;
 
     private bool IsInRange(DateOnly date) =>
         TryGetRange(out var from, out var to, out _) && date >= from && date <= to;

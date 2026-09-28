@@ -1,0 +1,153 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:ui="using:FluentAvalonia.UI.Controls"
+             xmlns:vm="using:HisaabKitaab.ViewModels"
+             xmlns:views="using:HisaabKitaab.Views"
+             x:Class="HisaabKitaab.Views.Settings.RecurringSection"
+             x:DataType="vm:RecurringSettingsViewModel">
+
+    <!-- Uses the card and row styles from SettingsView. -->
+    <Border Classes="card">
+        <StackPanel Spacing="12">
+            <Grid ColumnDefinitions="*,Auto">
+                <StackPanel Spacing="2">
+                    <TextBlock Text="Recurring expenses" Theme="{StaticResource SubtitleTextBlockStyle}" />
+                    <TextBlock Text="Rent, bills and subscriptions that are added to your expenses automatically on their day each month."
+                               TextWrapping="Wrap" Opacity="0.75" />
+                </StackPanel>
+                <Button Grid.Column="1" Classes="accent" VerticalAlignment="Top" Margin="12,0,0,0"
+                        Command="{Binding OpenNewFormCommand}" IsVisible="{Binding !IsFormOpen}">
+                    <StackPanel Orientation="Horizontal" Spacing="6">
+                        <ui:SymbolIcon Symbol="Add" FontSize="16" />
+                        <TextBlock Text="Add recurring" />
+                    </StackPanel>
+                </Button>
+            </Grid>
+
+            <!-- Add / edit form -->
+            <Border IsVisible="{Binding IsFormOpen}" CornerRadius="6" Padding="14"
+                    Background="{DynamicResource SubtleFillColorSecondaryBrush}">
+                <StackPanel Spacing="10">
+                    <TextBlock Text="{Binding FormTitle}" FontWeight="SemiBold" />
+                    <Grid ColumnDefinitions="2*,12,*,12,100">
+                        <StackPanel>
+                            <TextBlock Classes="caption" Text="Name (written as the note)" />
+                            <TextBox Text="{Binding FormName}" Watermark="e.g. House rent, Netflix"
+                                     MaxLength="{x:Static vm:RecurringSettingsViewModel.MaxNameLength}" />
+                        </StackPanel>
+                        <StackPanel Grid.Column="2">
+                            <TextBlock Classes="caption" Text="Amount (₨)" />
+                            <ui:NumberBox Value="{Binding FormAmount, Mode=TwoWay}" SpinButtonPlacementMode="Hidden"
+                                          AcceptsExpression="True" HorizontalAlignment="Stretch" PlaceholderText="e.g. 85000" />
+                        </StackPanel>
+                        <StackPanel Grid.Column="4">
+                            <TextBlock Classes="caption" Text="Day of month" />
+                            <ui:NumberBox Value="{Binding FormDay, Mode=TwoWay}" Minimum="1" Maximum="31"
+                                          SpinButtonPlacementMode="Inline" HorizontalAlignment="Stretch" />
+                        </StackPanel>
+                    </Grid>
+                    <Grid ColumnDefinitions="*,12,*,12,Auto">
+                        <StackPanel>
+                            <TextBlock Classes="caption" Text="Category" />
+                            <ComboBox ItemsSource="{Binding CategoryOptions}" SelectedItem="{Binding FormCategory}"
+                                      HorizontalAlignment="Stretch">
+                                <ComboBox.ItemTemplate>
+                                    <DataTemplate x:DataType="vm:CategoryOption">
+                                        <StackPanel Orientation="Horizontal" Spacing="8">
+                                            <TextBlock Text="{Binding Icon}" />
+                                            <TextBlock Text="{Binding Name}" />
+                                        </StackPanel>
+                                    </DataTemplate>
+                                </ComboBox.ItemTemplate>
+                            </ComboBox>
+                        </StackPanel>
+                        <StackPanel Grid.Column="2">
+                            <TextBlock Classes="caption" Text="Family member" />
+                            <ComboBox ItemsSource="{Binding MemberOptions}" SelectedItem="{Binding FormMember}"
+                                      HorizontalAlignment="Stretch">
+                                <ComboBox.ItemTemplate>
+                                    <DataTemplate x:DataType="vm:MemberOption">
+                                        <TextBlock Text="{Binding Name}" />
+                                    </DataTemplate>
+                                </ComboBox.ItemTemplate>
+                            </ComboBox>
+                        </StackPanel>
+                        <StackPanel Grid.Column="4">
+                            <TextBlock Classes="caption" Text="Paid with" />
+                            <ListBox Classes="segmented" ItemsSource="{Binding PaymentOptions}" SelectedItem="{Binding FormPayment}">
+                                <ListBox.ItemsPanel>
+                                    <ItemsPanelTemplate>
+                                        <StackPanel Orientation="Horizontal" />
+                                    </ItemsPanelTemplate>
+                                </ListBox.ItemsPanel>
+                                <ListBox.ItemTemplate>
+                                    <DataTemplate x:DataType="vm:PaymentOption">
+                                        <StackPanel Orientation="Horizontal" Spacing="6">
+                                            <TextBlock Text="{Binding Icon}" />
+                                            <TextBlock Text="{Binding Name}" />
+                                        </StackPanel>
+                                    </DataTemplate>
+                                </ListBox.ItemTemplate>
+                            </ListBox>
+                        </StackPanel>
+                    </Grid>
+                    <CheckBox Content="{Binding IncludeThisMonthText}" IsChecked="{Binding FormIncludeThisMonth}"
+                              IsVisible="{Binding CanIncludeThisMonth}" />
+                    <ui:InfoBar IsOpen="{Binding HasError}" IsVisible="{Binding HasError}" IsClosable="False"
+                                Severity="Error" Message="{Binding ErrorMessage}" />
+                    <StackPanel Orientation="Horizontal" Spacing="8">
+                        <Button Classes="accent" Content="{Binding SaveButtonText}" Command="{Binding SaveFormCommand}" MinWidth="100" />
+                        <Button Content="Cancel" Command="{Binding CancelFormCommand}" />
+                    </StackPanel>
+                </StackPanel>
+            </Border>
+
+            <TextBlock Text="Nothing recurring yet." IsVisible="{Binding !HasItems}" Opacity="0.6" Margin="0,4" />
+
+            <ItemsControl ItemsSource="{Binding Items}" IsVisible="{Binding HasItems}">
+                <ItemsControl.ItemsPanel>
+                    <ItemsPanelTemplate>
+                        <StackPanel Spacing="2" />
+                    </ItemsPanelTemplate>
+                </ItemsControl.ItemsPanel>
+                <ItemsControl.ItemTemplate>
+                    <DataTemplate x:DataType="vm:RecurringItemViewModel">
+                        <Border Classes="memberRow">
+                            <Grid ColumnDefinitions="Auto,*,Auto,Auto,Auto,Auto" MinHeight="40">
+                                <Border Width="32" Height="32" CornerRadius="16"
+                                        Background="{Binding Color, Converter={x:Static views:AppConverters.HexToTint}}"
+                                        BorderBrush="{Binding Color, Converter={x:Static views:AppConverters.HexToBrush}}"
+                                        BorderThickness="1.5">
+                                    <TextBlock Text="{Binding Icon}" FontSize="15" HorizontalAlignment="Center" VerticalAlignment="Center" />
+                                </Border>
+                                <StackPanel Grid.Column="1" Margin="12,0" VerticalAlignment="Center">
+                                    <TextBlock Text="{Binding Name}" FontWeight="SemiBold" />
+                                    <TextBlock Text="{Binding Details}" FontSize="12" Opacity="0.7" TextTrimming="CharacterEllipsis" />
+                                </StackPanel>
+                                <StackPanel Grid.Column="2" Margin="12,0" VerticalAlignment="Center">
+                                    <TextBlock Text="{Binding AmountText}" FontWeight="SemiBold" HorizontalAlignment="Right" />
+                                    <TextBlock Text="{Binding NextText}" FontSize="12" Opacity="0.7" HorizontalAlignment="Right"
+                                               IsVisible="{Binding !IsPaused}" />
+                                    <TextBlock Text="Paused" FontSize="12" Opacity="0.7" HorizontalAlignment="Right"
+                                               IsVisible="{Binding IsPaused}" />
+                                </StackPanel>
+                                <ToggleSwitch Grid.Column="3" IsChecked="{Binding IsActive}" OnContent="" OffContent=""
+                                              MinWidth="0" VerticalAlignment="Center"
+                                              ToolTip.Tip="On: added every month. Off: paused."
+                                              AutomationProperties.Name="Active" />
+                                <Button Grid.Column="4" Theme="{StaticResource TransparentButton}" Command="{Binding EditCommand}"
+                                        ToolTip.Tip="Edit" AutomationProperties.Name="Edit recurring expense">
+                                    <ui:SymbolIcon Symbol="Edit" FontSize="16" />
+                                </Button>
+                                <Button Grid.Column="5" Theme="{StaticResource TransparentButton}" Command="{Binding RemoveCommand}"
+                                        ToolTip.Tip="Remove" AutomationProperties.Name="Remove recurring expense">
+                                    <ui:SymbolIcon Symbol="Delete" FontSize="16" />
+                                </Button>
+                            </Grid>
+                        </Border>
+                    </DataTemplate>
+                </ItemsControl.ItemTemplate>
+            </ItemsControl>
+        </StackPanel>
+    </Border>
+</UserControl>

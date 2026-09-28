@@ -1,0 +1,96 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:ui="using:FluentAvalonia.UI.Controls"
+             xmlns:vm="using:HisaabKitaab.ViewModels"
+             xmlns:views="using:HisaabKitaab.Views"
+             x:Class="HisaabKitaab.Views.Settings.BudgetsSection"
+             x:DataType="vm:BudgetSettingsViewModel">
+
+    <!-- Uses the card and row styles from SettingsView. -->
+    <Border Classes="card">
+        <StackPanel Spacing="12">
+            <StackPanel Spacing="2">
+                <TextBlock Text="Budgets" Theme="{StaticResource SubtitleTextBlockStyle}" />
+                <TextBlock Text="A monthly limit for all spending, a category or a family member. The Dashboard shows how each is doing, and you're warned when one is nearly used up or goes over."
+                           TextWrapping="Wrap" Opacity="0.75" />
+            </StackPanel>
+
+            <Grid ColumnDefinitions="*,8,160,8,Auto" Margin="0,4,0,0">
+                <ComboBox ItemsSource="{Binding TargetOptions}" SelectedItem="{Binding NewTarget}"
+                          PlaceholderText="Budget for…" HorizontalAlignment="Stretch"
+                          AutomationProperties.Name="Budget for">
+                    <ComboBox.ItemTemplate>
+                        <DataTemplate x:DataType="vm:BudgetTargetOption">
+                            <StackPanel Orientation="Horizontal" Spacing="8">
+                                <Border Width="22" Height="22" CornerRadius="11"
+                                        Background="{Binding Color, Converter={x:Static views:AppConverters.HexToTint}}">
+                                    <TextBlock Text="{Binding Icon}" FontSize="12" HorizontalAlignment="Center" VerticalAlignment="Center" />
+                                </Border>
+                                <TextBlock Text="{Binding Label}" VerticalAlignment="Center" />
+                            </StackPanel>
+                        </DataTemplate>
+                    </ComboBox.ItemTemplate>
+                </ComboBox>
+                <ui:NumberBox Grid.Column="2" Value="{Binding NewAmount, Mode=TwoWay}" PlaceholderText="₨ a month"
+                              SpinButtonPlacementMode="Hidden" AcceptsExpression="True" HorizontalAlignment="Stretch"
+                              AutomationProperties.Name="Monthly budget amount" />
+                <Button Grid.Column="4" Classes="accent" Command="{Binding AddCommand}">
+                    <StackPanel Orientation="Horizontal" Spacing="6">
+                        <ui:SymbolIcon Symbol="Add" FontSize="16" />
+                        <TextBlock Text="Set budget" />
+                    </StackPanel>
+                </Button>
+            </Grid>
+
+            <ui:InfoBar IsOpen="{Binding HasError}" IsVisible="{Binding HasError}" IsClosable="False"
+                        Severity="Error" Message="{Binding ErrorMessage}" />
+
+            <TextBlock Text="No budgets yet." IsVisible="{Binding !HasItems}" Opacity="0.6" Margin="0,4" />
+
+            <ItemsControl ItemsSource="{Binding Items}" IsVisible="{Binding HasItems}">
+                <ItemsControl.ItemsPanel>
+                    <ItemsPanelTemplate>
+                        <StackPanel Spacing="2" />
+                    </ItemsPanelTemplate>
+                </ItemsControl.ItemsPanel>
+                <ItemsControl.ItemTemplate>
+                    <DataTemplate x:DataType="vm:BudgetItemViewModel">
+                        <Border Classes="memberRow">
+                            <Grid ColumnDefinitions="Auto,*,Auto,Auto" MinHeight="36">
+                                <Border Width="32" Height="32" CornerRadius="16"
+                                        Background="{Binding Target.Color, Converter={x:Static views:AppConverters.HexToTint}}"
+                                        BorderBrush="{Binding Target.Color, Converter={x:Static views:AppConverters.HexToBrush}}"
+                                        BorderThickness="1.5">
+                                    <TextBlock Text="{Binding Target.Icon}" FontSize="15"
+                                               HorizontalAlignment="Center" VerticalAlignment="Center" />
+                                </Border>
+                                <TextBlock Grid.Column="1" Margin="12,0" VerticalAlignment="Center" Text="{Binding Target.Label}" />
+                                <!-- Click the amount to change it -->
+                                <Button Grid.Column="2" Theme="{StaticResource TransparentButton}" ToolTip.Tip="Change the amount">
+                                    <StackPanel Orientation="Horizontal" Spacing="6">
+                                        <TextBlock Text="{Binding AmountText}" FontWeight="SemiBold" />
+                                        <ui:SymbolIcon Symbol="Edit" FontSize="13" Opacity="0.7" />
+                                    </StackPanel>
+                                    <Button.Flyout>
+                                        <Flyout Placement="BottomEdgeAlignedRight">
+                                            <StackPanel Width="220" Spacing="8">
+                                                <TextBlock Classes="caption" Text="Monthly budget (₨)" />
+                                                <ui:NumberBox Value="{Binding AmountInput, Mode=TwoWay}" SpinButtonPlacementMode="Hidden"
+                                                              AcceptsExpression="True" HorizontalAlignment="Stretch" />
+                                                <Button Classes="accent" Content="Save" Command="{Binding SaveAmountCommand}" />
+                                            </StackPanel>
+                                        </Flyout>
+                                    </Button.Flyout>
+                                </Button>
+                                <Button Grid.Column="3" Theme="{StaticResource TransparentButton}" Command="{Binding RemoveCommand}"
+                                        ToolTip.Tip="Remove" AutomationProperties.Name="Remove budget">
+                                    <ui:SymbolIcon Symbol="Delete" FontSize="16" />
+                                </Button>
+                            </Grid>
+                        </Border>
+                    </DataTemplate>
+                </ItemsControl.ItemTemplate>
+            </ItemsControl>
+        </StackPanel>
+    </Border>
+</UserControl>

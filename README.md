@@ -11,7 +11,8 @@ look, light and dark themes), [ClosedXML](https://github.com/ClosedXML/ClosedXML
 and [LiveCharts2](https://livecharts.dev/).
 
 > **Status:** early development. Dashboard, Settings, Expenses (with search and filters), Bank &
-> Cash, Currency and Credit Card work; the other screens are being built one stage at a time (see *Roadmap* below).
+> Cash, Currency, Credit Card, budgets, recurring expenses and reminders work; the rest is being
+> built one stage at a time (see *Roadmap* below).
 
 ## Where your data lives
 
@@ -46,12 +47,13 @@ The **Dashboard** opens first and shows, for the month you pick:
   (with what's owed on the card).
 - **Where the money went**: a doughnut chart and list by category, in each
   category's colour. Pick a family member above it to see just their spending.
+- **Budgets**: how much of each monthly budget has been used (see *Budgets* below).
 - **Income and spending over the last 6 months**, and **spending by family
   member**, as bar charts.
 
 Each workbook also has a **Summary** sheet with the same figures (income,
-spent, remaining, month-end balances, and totals per family member and per
-category) as live Excel formulas. The app rebuilds it on every save, so edit
+spent, remaining, month-end balances, totals per family member and per
+category, and budgets) as live Excel formulas. The app rebuilds it on every save, so edit
 the other sheets rather than this one.
 
 ## Logging expenses
@@ -131,6 +133,57 @@ In the workbook, the *Credit Card* sheet has a formula-driven summary
 the due date for that month's bill), the repayment log, and alongside it a
 copy of the month's card expenses from the Expenses sheet (change those on the
 Expenses sheet; the copy is refreshed every time the app saves).
+
+## Budgets
+
+In **Settings → Budgets**, set a monthly limit for **all spending**, for a
+**category** or for a **family member** (one budget each; amounts accept sums
+like `20000+5000`). A budget applies to every month until you change it, and
+it follows renames. Removing a category or member removes its budget.
+
+- The **Dashboard** shows a progress bar for each budget in the month you're
+  viewing: amber from 80% used, red once it's over.
+- After you add an expense, the Expenses screen warns you if it took one of
+  its budgets past 80% or over the limit.
+- The workbook's **Summary** sheet lists each budget with Excel formulas for
+  what's been spent and the share used (as of the last time the app saved
+  that month).
+
+## Recurring expenses
+
+In **Settings → Recurring expenses**, add rent, bills and subscriptions with
+a name (written as the expense's note), amount, category, family member, how
+they're paid and the day of the month (days past the end of a short month,
+like the 31st, use its last day).
+
+- On that day they're added as ordinary expenses, so they count everywhere
+  (Bank & Cash, Credit Card, Dashboard, budgets). Anything missed while the app
+  was closed is caught up the next time it starts.
+- A new item whose day has already passed this month starts next month, unless
+  you tick **Also add it for this month**.
+- Each one is added once per month, even if you delete the expense it added
+  (it won't come back). Switch one off to pause it; switched back on, it
+  continues from its next day, skipping any it missed while paused.
+- If that month's workbook is open in Excel, it's tried again a minute later.
+- The Expenses screen tells you what was added automatically.
+
+## Reminders
+
+In **Settings → Notifications** you can turn on or off:
+
+- a **daily reminder** to log expenses, at a time you choose, shown only if
+  nothing has been added that day;
+- a **credit card payment reminder**, a chosen number of days before the due
+  day (set on the Credit Card screen), shown only if something is owed;
+- a **budget exceeded** alert, the first time a budget goes over in a month.
+
+They appear as desktop notifications while Hisaab Kitaab is open (including
+minimised), each only once, even across restarts. **Send a test
+notification** checks they work. On Windows they need notifications switched
+on in *Settings → System → Notifications*; on Linux they use `notify-send`
+(the `libnotify-bin` package on Debian/Ubuntu). If notifications can't be
+shown, the Notifications section says why, and the in-app warnings above
+still work.
 
 ## Currency (cash count)
 
@@ -268,6 +321,6 @@ HisaabKitaab.Tests/  xUnit tests for services and view models
 7. ✅ Currency denominations
 8. ✅ Credit card, with automatic linking from expenses
 9. ✅ Dashboard with charts (and the Summary sheet)
-10. Budgets, recurring expenses, notifications
+10. ✅ Budgets, recurring expenses, notifications
 11. Zakat (separate yearly file)
 12. Backups and file protection

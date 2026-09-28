@@ -50,6 +50,13 @@
     <Style Selector="ui|NumberBox /template/ RepeatButton">
         <Setter Property="IsTabStop" Value="False" />
     </Style>
+    <!-- Progress bars (budgets, card limit): amber when nearly used up, red when over. -->
+    <Style Selector="ProgressBar.high">
+        <Setter Property="Foreground" Value="{DynamicResource SystemFillColorCautionBrush}" />
+    </Style>
+    <Style Selector="ProgressBar.over">
+        <Setter Property="Foreground" Value="{DynamicResource SystemFillColorCriticalBrush}" />
+    </Style>
     <Style Selector="TextBlock.negative">
         <Setter Property="Foreground" Value="{DynamicResource SystemFillColorCriticalBrush}" />
     </Style>

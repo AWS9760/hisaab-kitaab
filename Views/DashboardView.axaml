@@ -148,6 +148,44 @@
                 </StackPanel>
             </Border>
 
+            <!-- Budgets -->
+            <Border Classes="card" Padding="18,14">
+                <StackPanel Spacing="10">
+                    <TextBlock Text="Budgets" Theme="{StaticResource SubtitleTextBlockStyle}" />
+                    <TextBlock IsVisible="{Binding !HasBudgets}" Opacity="0.7" TextWrapping="Wrap"
+                               Text="No budgets yet. Set monthly limits for all spending, a category or a family member in Settings." />
+                    <ItemsControl ItemsSource="{Binding BudgetRows}" IsVisible="{Binding HasBudgets}">
+                        <ItemsControl.ItemsPanel>
+                            <ItemsPanelTemplate>
+                                <StackPanel Spacing="12" />
+                            </ItemsPanelTemplate>
+                        </ItemsControl.ItemsPanel>
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate x:DataType="vm:BudgetRow">
+                                <Grid ColumnDefinitions="Auto,*" RowDefinitions="Auto,Auto">
+                                    <Border Grid.RowSpan="2" Width="30" Height="30" CornerRadius="15" Margin="0,0,12,0"
+                                            Background="{Binding Color, Converter={x:Static views:AppConverters.HexToTint}}"
+                                            VerticalAlignment="Center">
+                                        <TextBlock Text="{Binding Icon}" FontSize="14" HorizontalAlignment="Center" VerticalAlignment="Center" />
+                                    </Border>
+                                    <Grid Grid.Column="1" ColumnDefinitions="*,Auto">
+                                        <TextBlock Text="{Binding Label}" FontWeight="SemiBold" />
+                                        <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="8">
+                                            <TextBlock Text="{Binding AmountText}" FontSize="12" Opacity="0.75" VerticalAlignment="Center" />
+                                            <TextBlock Text="{Binding PercentText}" FontWeight="SemiBold" MinWidth="44" TextAlignment="Right"
+                                                       Classes.negative="{Binding IsOver}" />
+                                        </StackPanel>
+                                    </Grid>
+                                    <ProgressBar Grid.Row="1" Grid.Column="1" Minimum="0" Maximum="100" Value="{Binding Percent}"
+                                                 Height="6" Margin="0,6,0,0"
+                                                 Classes.high="{Binding IsNear}" Classes.over="{Binding IsOver}" />
+                                </Grid>
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+                </StackPanel>
+            </Border>
+
             <!-- Trend and per member -->
             <Grid ColumnDefinitions="3*,12,2*">
                 <Border Classes="card" Padding="18,14">

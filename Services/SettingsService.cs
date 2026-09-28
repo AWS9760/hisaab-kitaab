@@ -7,6 +7,11 @@ namespace HisaabKitaab.Services;
 /// Loads and saves <see cref="AppSettings"/> to a JSON file in the user's
 /// app-data folder, and owns the rules for editing family members and
 /// categories. Every change is written to disk immediately.
+///
+/// Background work (recurring expenses, reminders, workbook saves) reads and
+/// changes settings too, so each change and its save happen under one lock.
+/// The lists exposed as properties are for the UI thread; other threads use
+/// the methods that take the lock.
 /// </summary>
 public class SettingsService
 {
@@ -17,6 +22,9 @@ public class SettingsService
     private AppSettings _settings = CreateDefaultSettings();
 
     private readonly string _defaultDataFolder;
+
+    // Reentrant, so a locked method can call another.
+    private readonly object _sync = new();
 
     /// <param name="defaultDataFolder">Where workbooks go unless the user picks a folder. Defaults to <see cref="DefaultDataFolder"/>.</param>
     public SettingsService(string filePath, string? defaultDataFolder = null)
@@ -108,12 +116,15 @@ public class SettingsService
 
     public void Save()
     {
-        Directory.CreateDirectory(Path.GetDirectoryName(FilePath)!);
+        lock (_sync)
+        {
+            Directory.CreateDirectory(Path.GetDirectoryName(FilePath)!);
 
-        // Write to a temp file first so a crash mid-write can't leave a half-written settings.json.
-        var tempPath = FilePath + ".tmp";
-        File.WriteAllText(tempPath, JsonSerializer.Serialize(_settings, SettingsJsonContext.Default.AppSettings));
-        File.Move(tempPath, FilePath, overwrite: true);
+            // Write to a temp file first so a crash mid-write can't leave a half-written settings.json.
+            var tempPath = FilePath + ".tmp";
+            File.WriteAllText(tempPath, JsonSerializer.Serialize(_settings, SettingsJsonContext.Default.AppSettings));
+            File.Move(tempPath, FilePath, overwrite: true);
+        }
     }
 
     // ---- Family members -----------------------------------------------------
@@ -129,11 +140,15 @@ public class SettingsService
 
     public FamilyMember AddFamilyMember(string name)
     {
-        ThrowIfInvalid(ValidateMemberName(name));
+        FamilyMember member;
+        lock (_sync)
+        {
+            ThrowIfInvalid(ValidateMemberName(name));
 
-        var member = new FamilyMember { Name = name.Trim() };
-        _settings.FamilyMembers.Add(member);
-        SaveOrRollBack(() => _settings.FamilyMembers.Remove(member));
+            member = new FamilyMember { Name = name.Trim() };
+            _settings.FamilyMembers.Add(member);
+            SaveOrRollBack(() => _settings.FamilyMembers.Remove(member));
+        }
 
         FamilyMembersChanged?.Invoke(this, EventArgs.Empty);
         return member;
@@ -141,25 +156,50 @@ public class SettingsService
 
     public void RenameFamilyMember(Guid id, string newName)
     {
-        var member = FindMember(id);
-        ThrowIfInvalid(ValidateMemberName(newName, id));
+        lock (_sync)
+        {
+            var member = FindMember(id);
+            ThrowIfInvalid(ValidateMemberName(newName, id));
 
-        var oldName = member.Name;
-        member.Name = newName.Trim();
-        SaveOrRollBack(() => member.Name = oldName);
+            var oldName = member.Name;
+            member.Name = newName.Trim();
+            var snapshots = _settings.Recurring.Where(r => r.MemberId == id).Select(r => (r, r.MemberName)).ToList();
+            snapshots.ForEach(s => s.r.MemberName = member.Name);
+            SaveOrRollBack(() =>
+            {
+                member.Name = oldName;
+                snapshots.ForEach(s => s.r.MemberName = s.MemberName);
+            });
+        }
 
         FamilyMembersChanged?.Invoke(this, EventArgs.Empty);
     }
 
+    /// <summary>
+    /// Removes a member and any budget for them. Recurring expenses keep the
+    /// name they were saved with.
+    /// </summary>
     public void RemoveFamilyMember(Guid id)
     {
-        var member = FindMember(id);
-        var index = _settings.FamilyMembers.IndexOf(member);
+        List<Budget> budgets;
+        lock (_sync)
+        {
+            var member = FindMember(id);
+            var index = _settings.FamilyMembers.IndexOf(member);
+            budgets = _settings.Budgets.Where(b => b.Target == BudgetTarget.Member && b.TargetId == id).ToList();
 
-        _settings.FamilyMembers.RemoveAt(index);
-        SaveOrRollBack(() => _settings.FamilyMembers.Insert(index, member));
+            _settings.FamilyMembers.RemoveAt(index);
+            _settings.Budgets.RemoveAll(budgets.Contains);
+            SaveOrRollBack(() =>
+            {
+                _settings.FamilyMembers.Insert(index, member);
+                _settings.Budgets.AddRange(budgets);
+            });
+        }
 
         FamilyMembersChanged?.Invoke(this, EventArgs.Empty);
+        if (budgets.Count > 0)
+            BudgetsChanged?.Invoke(this, EventArgs.Empty);
     }
 
     // ---- Categories ---------------------------------------------------------
@@ -187,18 +227,22 @@ public class SettingsService
     /// </summary>
     public Category AddCategory(string name, string? icon = null, string? color = null)
     {
-        ThrowIfInvalid(ValidateCategoryName(name));
-
-        var category = new Category
+        Category category;
+        lock (_sync)
         {
-            Name = name.Trim(),
-            Icon = string.IsNullOrWhiteSpace(icon) ? CategoryStyles.DefaultIcon : icon.Trim(),
-            Color = CategoryStyles.IsValidColor(color)
-                ? color!
-                : CategoryStyles.Colors[_settings.Categories!.Count % CategoryStyles.Colors.Count],
-        };
-        _settings.Categories!.Add(category);
-        SaveOrRollBack(() => _settings.Categories!.Remove(category));
+            ThrowIfInvalid(ValidateCategoryName(name));
+
+            category = new Category
+            {
+                Name = name.Trim(),
+                Icon = string.IsNullOrWhiteSpace(icon) ? CategoryStyles.DefaultIcon : icon.Trim(),
+                Color = CategoryStyles.IsValidColor(color)
+                    ? color!
+                    : CategoryStyles.Colors[_settings.Categories!.Count % CategoryStyles.Colors.Count],
+            };
+            _settings.Categories!.Add(category);
+            SaveOrRollBack(() => _settings.Categories!.Remove(category));
+        }
 
         CategoriesChanged?.Invoke(this, EventArgs.Empty);
         return category;
@@ -206,12 +250,21 @@ public class SettingsService
 
     public void RenameCategory(Guid id, string newName)
     {
-        var category = FindCategory(id);
-        ThrowIfInvalid(ValidateCategoryName(newName, id));
+        lock (_sync)
+        {
+            var category = FindCategory(id);
+            ThrowIfInvalid(ValidateCategoryName(newName, id));
 
-        var oldName = category.Name;
-        category.Name = newName.Trim();
-        SaveOrRollBack(() => category.Name = oldName);
+            var oldName = category.Name;
+            category.Name = newName.Trim();
+            var snapshots = _settings.Recurring.Where(r => r.CategoryId == id).Select(r => (r, r.CategoryName)).ToList();
+            snapshots.ForEach(s => s.r.CategoryName = category.Name);
+            SaveOrRollBack(() =>
+            {
+                category.Name = oldName;
+                snapshots.ForEach(s => s.r.CategoryName = s.CategoryName);
+            });
+        }
 
         CategoriesChanged?.Invoke(this, EventArgs.Empty);
     }
@@ -223,24 +276,39 @@ public class SettingsService
         if (!CategoryStyles.IsValidColor(color))
             throw new ArgumentException("Colour must look like #RRGGBB.", nameof(color));
 
-        var category = FindCategory(id);
-        var (oldIcon, oldColor) = (category.Icon, category.Color);
-        category.Icon = icon.Trim();
-        category.Color = color;
-        SaveOrRollBack(() => (category.Icon, category.Color) = (oldIcon, oldColor));
+        lock (_sync)
+        {
+            var category = FindCategory(id);
+            var (oldIcon, oldColor) = (category.Icon, category.Color);
+            category.Icon = icon.Trim();
+            category.Color = color;
+            SaveOrRollBack(() => (category.Icon, category.Color) = (oldIcon, oldColor));
+        }
 
         CategoriesChanged?.Invoke(this, EventArgs.Empty);
     }
 
     public void RemoveCategory(Guid id)
     {
-        var category = FindCategory(id);
-        var index = _settings.Categories!.IndexOf(category);
+        List<Budget> budgets;
+        lock (_sync)
+        {
+            var category = FindCategory(id);
+            var index = _settings.Categories!.IndexOf(category);
+            budgets = _settings.Budgets.Where(b => b.Target == BudgetTarget.Category && b.TargetId == id).ToList();
 
-        _settings.Categories.RemoveAt(index);
-        SaveOrRollBack(() => _settings.Categories.Insert(index, category));
+            _settings.Categories.RemoveAt(index);
+            _settings.Budgets.RemoveAll(budgets.Contains);
+            SaveOrRollBack(() =>
+            {
+                _settings.Categories.Insert(index, category);
+                _settings.Budgets.AddRange(budgets);
+            });
+        }
 
         CategoriesChanged?.Invoke(this, EventArgs.Empty);
+        if (budgets.Count > 0)
+            BudgetsChanged?.Invoke(this, EventArgs.Empty);
     }
 
     // ---- Credit card --------------------------------------------------------
@@ -262,14 +330,307 @@ public class SettingsService
         if (dueDay is < 1 or > 31)
             throw new ArgumentException("The due day must be between 1 and 31.", nameof(dueDay));
 
-        var card = _settings.CreditCard;
-        var old = (card.Name, card.Limit, card.DueDay);
-        card.Name = string.IsNullOrWhiteSpace(name) ? "Credit card" : name.Trim();
-        card.Limit = limit is { } l ? Math.Round(l, 2) : null;
-        card.DueDay = dueDay;
-        SaveOrRollBack(() => (card.Name, card.Limit, card.DueDay) = old);
+        lock (_sync)
+        {
+            var card = _settings.CreditCard;
+            var old = (card.Name, card.Limit, card.DueDay);
+            card.Name = string.IsNullOrWhiteSpace(name) ? "Credit card" : name.Trim();
+            card.Limit = limit is { } l ? Math.Round(l, 2) : null;
+            card.DueDay = dueDay;
+            SaveOrRollBack(() => (card.Name, card.Limit, card.DueDay) = old);
+        }
 
         CardSettingsChanged?.Invoke(this, EventArgs.Empty);
+    }
+
+    // ---- Budgets ------------------------------------------------------------
+
+    public IReadOnlyList<Budget> Budgets => _settings.Budgets;
+
+    /// <summary>
+    /// Raised after a budget is added, changed or removed.
+    /// </summary>
+    public event EventHandler? BudgetsChanged;
+
+    /// <summary>
+    /// Budgets with their category's or member's current name.
+    /// </summary>
+    /// <remarks>Safe to call from any thread (workbook saves use it for the Summary sheet).</remarks>
+    public IReadOnlyList<ResolvedBudget> ResolvedBudgets()
+    {
+        lock (_sync)
+        {
+            return _settings.Budgets
+                .Select(b => new ResolvedBudget(b.Id, b.Target, TargetName(b.Target, b.TargetId) ?? string.Empty, b.Amount))
+                .Where(b => b.Target == BudgetTarget.Everything || b.Name.Length > 0)
+                .ToList();
+        }
+    }
+
+    /// <summary>
+    /// Sets the monthly budget for a target, adding it or replacing the amount
+    /// of the existing one (there's at most one per target).
+    /// </summary>
+    public Budget SetBudget(BudgetTarget target, Guid targetId, decimal amount)
+    {
+        if (amount <= 0)
+            throw new ArgumentException("A budget must be more than zero.", nameof(amount));
+
+        Budget budget;
+        lock (_sync)
+        {
+            if (target == BudgetTarget.Everything)
+                targetId = Guid.Empty;
+            else if (TargetName(target, targetId) is null)
+                throw new KeyNotFoundException($"No {(target == BudgetTarget.Category ? "category" : "family member")} with id {targetId}.");
+
+            amount = Math.Round(amount, 2);
+            var existing = _settings.Budgets.FirstOrDefault(b => b.Target == target && b.TargetId == targetId);
+            if (existing is not null)
+            {
+                budget = existing;
+                var old = existing.Amount;
+                existing.Amount = amount;
+                SaveOrRollBack(() => existing.Amount = old);
+            }
+            else
+            {
+                budget = new Budget { Target = target, TargetId = targetId, Amount = amount };
+                _settings.Budgets.Add(budget);
+                SaveOrRollBack(() => _settings.Budgets.Remove(budget));
+            }
+        }
+
+        BudgetsChanged?.Invoke(this, EventArgs.Empty);
+        return budget;
+    }
+
+    public void RemoveBudget(Guid id)
+    {
+        lock (_sync)
+        {
+            var budget = _settings.Budgets.FirstOrDefault(b => b.Id == id) ?? throw new KeyNotFoundException($"No budget with id {id}.");
+            var index = _settings.Budgets.IndexOf(budget);
+            _settings.Budgets.RemoveAt(index);
+            SaveOrRollBack(() => _settings.Budgets.Insert(index, budget));
+        }
+
+        BudgetsChanged?.Invoke(this, EventArgs.Empty);
+    }
+
+    private string? TargetName(BudgetTarget target, Guid id) => target switch
+    {
+        BudgetTarget.Everything => string.Empty,
+        BudgetTarget.Category => _settings.Categories!.FirstOrDefault(c => c.Id == id)?.Name,
+        BudgetTarget.Member => _settings.FamilyMembers.FirstOrDefault(m => m.Id == id)?.Name,
+        _ => null,
+    };
+
+    // ---- Recurring expenses ---------------------------------------------------
+
+    public const int MaxRecurringNameLength = 60;
+
+    public IReadOnlyList<RecurringExpense> Recurring => _settings.Recurring;
+
+    /// <summary>
+    /// Raised after a recurring expense is added, changed, paused or removed
+    /// (not when one is marked as added for a month).
+    /// </summary>
+    public event EventHandler? RecurringChanged;
+
+    public string? ValidateRecurring(RecurringExpense item)
+    {
+        if (string.IsNullOrWhiteSpace(item.Name))
+            return "Give it a name, e.g. House rent.";
+        if (item.Name.Trim().Length > MaxRecurringNameLength)
+            return $"Names can be at most {MaxRecurringNameLength} characters.";
+        if (item.Amount <= 0)
+            return "The amount must be more than zero.";
+        if (item.DayOfMonth is < 1 or > 31)
+            return "The day must be between 1 and 31.";
+        if (!Enum.IsDefined(item.PaymentMethod))
+            return "Choose how it's paid.";
+        return null;
+    }
+
+    /// <summary>
+    /// Adds or replaces (by id) a recurring expense. Category and member names
+    /// are refreshed from their ids.
+    /// </summary>
+    public RecurringExpense SaveRecurring(RecurringExpense item)
+    {
+        ThrowIfInvalid(ValidateRecurring(item));
+
+        lock (_sync)
+        {
+            item.Name = item.Name.Trim();
+            item.Amount = Math.Round(item.Amount, 2);
+            RefreshNames(item);
+
+            var index = _settings.Recurring.FindIndex(r => r.Id == item.Id);
+            if (index >= 0)
+            {
+                var old = _settings.Recurring[index];
+
+                // Editing never changes what's been added; recurring expenses may
+                // have been added in the background while the form was open.
+                item.LastAddedFor = old.LastAddedFor;
+                _settings.Recurring[index] = item;
+                SaveOrRollBack(() => _settings.Recurring[index] = old);
+            }
+            else
+            {
+                _settings.Recurring.Add(item);
+                SaveOrRollBack(() => _settings.Recurring.Remove(item));
+            }
+        }
+
+        RecurringChanged?.Invoke(this, EventArgs.Empty);
+        return item;
+    }
+
+    /// <summary>
+    /// Pauses or resumes a recurring expense. When resuming with
+    /// <paramref name="today"/>, dates that passed while it was paused are
+    /// skipped rather than added all at once.
+    /// </summary>
+    public void SetRecurringPaused(Guid id, bool paused, DateOnly? today = null)
+    {
+        lock (_sync)
+        {
+            var item = FindRecurring(id);
+            var old = (item.IsPaused, item.LastAddedFor);
+            item.IsPaused = paused;
+            if (!paused && today is { } from && item.NextDate < from)
+            {
+                var month = YearMonth.Of(from);
+                if (item.DateIn(month) < from)
+                    month = month.AddMonths(1);
+                item.LastAddedFor = item.DateIn(month.AddMonths(-1));
+            }
+
+            SaveOrRollBack(() => (item.IsPaused, item.LastAddedFor) = old);
+        }
+
+        RecurringChanged?.Invoke(this, EventArgs.Empty);
+    }
+
+    public void RemoveRecurring(Guid id)
+    {
+        lock (_sync)
+        {
+            var item = FindRecurring(id);
+            var index = _settings.Recurring.IndexOf(item);
+            _settings.Recurring.RemoveAt(index);
+            SaveOrRollBack(() => _settings.Recurring.Insert(index, item));
+        }
+
+        RecurringChanged?.Invoke(this, EventArgs.Empty);
+    }
+
+    /// <summary>
+    /// A copy of each recurring expense as it is now, for use off the UI thread.
+    /// </summary>
+    public IReadOnlyList<RecurringExpense> RecurringSnapshot() =>
+        Locked(() => _settings.Recurring.Select(r => r.Copy()).ToList());
+
+    /// <summary>
+    /// A copy of one recurring expense as it is now, or null if it's been removed.
+    /// </summary>
+    public RecurringExpense? GetRecurring(Guid id) =>
+        Locked(() => _settings.Recurring.FirstOrDefault(r => r.Id == id)?.Copy());
+
+    /// <summary>
+    /// Records that a recurring expense has been added for <paramref name="date"/>.
+    /// Never moves backwards.
+    /// </summary>
+    public void MarkRecurringAdded(Guid id, DateOnly date)
+    {
+        lock (_sync)
+        {
+            var item = FindRecurring(id);
+            var old = item.LastAddedFor;
+            if (old >= date)
+                return;
+            item.LastAddedFor = date;
+            SaveOrRollBack(() => item.LastAddedFor = old);
+        }
+    }
+
+    /// <summary>
+    /// The category and member names to write on the expense: the current names
+    /// if they still exist, otherwise the names saved with the item.
+    /// </summary>
+    public (string Category, string Member) NamesFor(RecurringExpense item) => Locked(() => (
+        (item.CategoryId is { } c ? _settings.Categories!.FirstOrDefault(x => x.Id == c)?.Name : null) ?? item.CategoryName,
+        (item.MemberId is { } m ? _settings.FamilyMembers.FirstOrDefault(x => x.Id == m)?.Name : null) ?? item.MemberName));
+
+    private void RefreshNames(RecurringExpense item) => (item.CategoryName, item.MemberName) = NamesFor(item);
+
+    private RecurringExpense FindRecurring(Guid id) =>
+        _settings.Recurring.FirstOrDefault(r => r.Id == id) ?? throw new KeyNotFoundException($"No recurring expense with id {id}.");
+
+    // ---- Notifications --------------------------------------------------------
+
+    public NotificationSettings Notifications => _settings.Notifications;
+
+    public void UpdateNotifications(bool dailyReminder, TimeOnly dailyReminderTime, bool cardDueReminder,
+        int cardDueDaysBefore, bool budgetAlerts)
+    {
+        if (cardDueDaysBefore is < 0 or > 30)
+            throw new ArgumentException("Choose between 0 and 30 days before.", nameof(cardDueDaysBefore));
+
+        lock (_sync)
+        {
+            var n = _settings.Notifications;
+            var old = (n.DailyReminder, n.DailyReminderTime, n.CardDueReminder, n.CardDueDaysBefore, n.BudgetAlerts);
+            (n.DailyReminder, n.DailyReminderTime, n.CardDueReminder, n.CardDueDaysBefore, n.BudgetAlerts) =
+                (dailyReminder, dailyReminderTime, cardDueReminder, cardDueDaysBefore, budgetAlerts);
+            SaveOrRollBack(() => (n.DailyReminder, n.DailyReminderTime, n.CardDueReminder, n.CardDueDaysBefore, n.BudgetAlerts) = old);
+        }
+    }
+
+    /// <summary>
+    /// Whether a budget's over-budget alert has been shown for <paramref name="month"/>.
+    /// </summary>
+    public bool WasBudgetAlertShown(Guid budgetId, YearMonth month) =>
+        Locked(() => _settings.Notifications.BudgetAlertsSent.Contains(BudgetAlertKey(budgetId, month)));
+
+    public void MarkDailyReminderShown(DateOnly day) => UpdateState(n => n.LastDailyReminder = day);
+
+    public void MarkCardDueReminderShown(DateOnly dueDate) => UpdateState(n => n.LastCardDueReminder = dueDate);
+
+    public static string BudgetAlertKey(Guid budgetId, YearMonth month) => $"{budgetId:N}:{month.Year:D4}-{month.Month:D2}";
+
+    public void MarkBudgetAlertShown(Guid budgetId, YearMonth month) => UpdateState(n =>
+    {
+        n.BudgetAlertsSent.Add(BudgetAlertKey(budgetId, month));
+
+        // Only the last few months matter.
+        var keep = Enumerable.Range(0, 3).Select(i => month.AddMonths(-i)).Select(m => $":{m.Year:D4}-{m.Month:D2}").ToList();
+        n.BudgetAlertsSent.RemoveAll(k => !keep.Any(k.EndsWith));
+    });
+
+    // State changes: saved, but a failed save isn't worth bothering anyone about.
+    private void UpdateState(Action<NotificationSettings> change)
+    {
+        lock (_sync)
+        {
+            change(_settings.Notifications);
+            try
+            {
+                Save();
+            }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+            {
+            }
+        }
+    }
+
+    private T Locked<T>(Func<T> read)
+    {
+        lock (_sync)
+            return read();
     }
 
     // ---- Helpers ------------------------------------------------------------
@@ -301,6 +662,7 @@ public class SettingsService
             throw new ArgumentException(error, "name");
     }
 
+    // Callers hold _sync, so the change, the save and any rollback happen together.
     private void SaveOrRollBack(Action rollBack)
     {
         try
@@ -345,6 +707,35 @@ public class SettingsService
                     category.Color = CategoryStyles.DefaultColor;
             }
         }
+
+        // Budgets must point at something that exists, one per target.
+        settings.Budgets = (settings.Budgets ?? new List<Budget>())
+            .Where(b => b is not null && b.Amount > 0 && Enum.IsDefined(b.Target))
+            .Where(b => b.Target switch
+            {
+                BudgetTarget.Everything => true,
+                BudgetTarget.Category => settings.Categories!.Any(c => c.Id == b.TargetId),
+                _ => settings.FamilyMembers.Any(m => m.Id == b.TargetId),
+            })
+            .GroupBy(b => (b.Target, b.Target == BudgetTarget.Everything ? Guid.Empty : b.TargetId))
+            .Select(g => g.First())
+            .ToList();
+
+        settings.Recurring = (settings.Recurring ?? new List<RecurringExpense>())
+            .Where(r => r is not null && !string.IsNullOrWhiteSpace(r.Name) && r.Amount > 0 && Enum.IsDefined(r.PaymentMethod))
+            .GroupBy(r => r.Id)
+            .Select(g => g.First())
+            .ToList();
+        foreach (var r in settings.Recurring)
+        {
+            r.DayOfMonth = Math.Clamp(r.DayOfMonth, 1, 31);
+            r.CategoryName ??= string.Empty;
+            r.MemberName ??= string.Empty;
+        }
+
+        settings.Notifications ??= new NotificationSettings();
+        settings.Notifications.BudgetAlertsSent ??= new List<string>();
+        settings.Notifications.CardDueDaysBefore = Math.Clamp(settings.Notifications.CardDueDaysBefore, 0, 30);
 
         settings.CreditCard ??= new CardSettings();
         var card = settings.CreditCard;

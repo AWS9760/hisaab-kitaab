@@ -19,7 +19,7 @@ internal static class SummarySheet
     private const int TableHeaderRow = 13;
 
     public static void Rebuild(XLWorkbook workbook, YearMonth month, ExpensesSheet expenses, BankCashSheet bank,
-        CreditCardSheet card, IReadOnlyList<Expense> monthExpenses)
+        CreditCardSheet card, IReadOnlyList<Expense> monthExpenses, IReadOnlyList<ResolvedBudget> budgets)
     {
         var ws = GetOrCreate(workbook);
         ws.Clear();
@@ -58,6 +58,7 @@ internal static class SummarySheet
         var byCategory = DashboardData.Group(monthExpenses, e => e.Category);
         WriteTable(ws, 1, "Family Member", "(no member)", byMember, ExpRange(expenses.MemberColumn), ExpRange(expenses.AmountColumn));
         WriteTable(ws, 5, "Category", "(no category)", byCategory, ExpRange(expenses.CategoryColumn), ExpRange(expenses.AmountColumn));
+        WriteBudgets(ws, budgets, ExpRange(expenses.AmountColumn), ExpRange(expenses.CategoryColumn), ExpRange(expenses.MemberColumn));
 
         ws.Column(1).Width = 30;
         ws.Column(2).Width = 18;
@@ -108,6 +109,62 @@ internal static class SummarySheet
             share.FormulaA1 = $"IF($B$5>0,{Letter(firstCol + 1)}{row}/$B$5,\"\")";
             share.Style.NumberFormat.Format = "0%";
         }
+    }
+
+    /// <summary>
+    /// Columns I-L: each monthly budget (set in the app) against what's been spent.
+    /// </summary>
+    private static void WriteBudgets(IXLWorksheet ws, IReadOnlyList<ResolvedBudget> budgets,
+        string amountRange, string categoryRange, string memberRange)
+    {
+        if (budgets.Count == 0)
+            return;
+
+        const int first = 9;
+        string[] headers = { "Budget", "Limit", "Spent", "Used" };
+        for (var i = 0; i < headers.Length; i++)
+            ws.Cell(TableHeaderRow, first + i).Value = headers[i];
+        var header = ws.Range(TableHeaderRow, first, TableHeaderRow, first + 3);
+        header.Style.Font.Bold = true;
+        header.Style.Font.FontColor = XLColor.White;
+        header.Style.Fill.BackgroundColor = XLColor.FromHtml("#0F766E");
+
+        var ordered = budgets.OrderBy(b => b.Target != BudgetTarget.Everything)
+            .ThenBy(b => b.Target).ThenBy(b => b.Label, StringComparer.CurrentCultureIgnoreCase).ToList();
+        for (var i = 0; i < ordered.Count; i++)
+        {
+            var b = ordered[i];
+            var row = TableHeaderRow + 1 + i;
+            ws.Cell(row, first).Value = b.Target switch
+            {
+                BudgetTarget.Everything => "All spending",
+                BudgetTarget.Category => $"Category: {b.Name}",
+                _ => $"Family member: {b.Name}",
+            };
+
+            var limit = ws.Cell(row, first + 1);
+            limit.Value = b.Amount;
+            limit.Style.NumberFormat.Format = ExpensesSheet.AmountFormat;
+
+            var spent = ws.Cell(row, first + 2);
+            spent.FormulaA1 = b.Target switch
+            {
+                BudgetTarget.Everything => "$B$5",
+                BudgetTarget.Category => $"SUMIFS({amountRange},{categoryRange},{Criteria(b.Name)})",
+                _ => $"SUMIFS({amountRange},{memberRange},{Criteria(b.Name)})",
+            };
+            spent.Style.NumberFormat.Format = ExpensesSheet.AmountFormat;
+
+            var used = ws.Cell(row, first + 3);
+            used.FormulaA1 = $"IF({Letter(first + 1)}{row}>0,{Letter(first + 2)}{row}/{Letter(first + 1)}{row},\"\")";
+            used.Style.NumberFormat.Format = "0%";
+        }
+
+        ws.Column(first - 1).Width = 4;
+        ws.Column(first).Width = 30;
+        ws.Column(first + 1).Width = 16;
+        ws.Column(first + 2).Width = 16;
+        ws.Column(first + 3).Width = 8;
     }
 
     /// <summary>

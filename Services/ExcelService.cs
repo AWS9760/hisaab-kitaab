@@ -26,6 +26,7 @@ public class ExcelService
     private const string SchemaPropertyName = "HisaabKitaab.SchemaVersion";
 
     private readonly Func<CardSettings>? _cardSettings;
+    private readonly Func<IReadOnlyList<ResolvedBudget>>? _budgets;
 
     // Every operation opens a workbook, changes it and saves it. Two running at
     // once on the same file (e.g. a background sync and the user adding an
@@ -43,10 +44,13 @@ public class ExcelService
     /// Supplies the credit card's limit and due day for the Credit Card sheet.
     /// Read at each save, so changes in Settings show up the next time a month is saved.
     /// </param>
-    public ExcelService(string dataFolder, Func<CardSettings>? cardSettings = null)
+    /// <param name="budgets">Supplies the monthly budgets for the Summary sheet.</param>
+    public ExcelService(string dataFolder, Func<CardSettings>? cardSettings = null,
+        Func<IReadOnlyList<ResolvedBudget>>? budgets = null)
     {
         DataFolder = dataFolder;
         _cardSettings = cardSettings;
+        _budgets = budgets;
     }
 
     public string DataFolder { get; }
@@ -756,7 +760,8 @@ public class ExcelService
         card.Refresh(expenses, monthExpenses);
         bank.RefreshFormulas(expenses, card);
         currency.RefreshFormulas(bank, card, expenses);
-        SummarySheet.Rebuild(workbook, month, expenses, bank, card, monthExpenses);
+        SummarySheet.Rebuild(workbook, month, expenses, bank, card, monthExpenses,
+            _budgets?.Invoke() ?? Array.Empty<ResolvedBudget>());
 
         // Excel recalculates everything when the file is opened.
         workbook.FullCalculationOnLoad = true;

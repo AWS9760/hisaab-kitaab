@@ -21,6 +21,12 @@ public record CategoryLegendRow(string Icon, string Name, string Color, string A
 public record MemberFilterOption(string? Value, string Label);
 
 /// <summary>
+/// One budget's progress bar on the Dashboard.
+/// </summary>
+public record BudgetRow(string Label, string Icon, string Color, double Percent, string AmountText, string PercentText,
+    bool IsNear, bool IsOver);
+
+/// <summary>
 /// The Dashboard: a month's income, spending and savings, where the money
 /// went (by category, overall or for one family member), the last six
 /// months' trend, and spending per member.
@@ -119,6 +125,12 @@ public partial class DashboardViewModel : PageViewModelBase
     [ObservableProperty]
     private bool _hasMemberData;
 
+    [ObservableProperty]
+    private IReadOnlyList<BudgetRow> _budgetRows = Array.Empty<BudgetRow>();
+
+    [ObservableProperty]
+    private bool _hasBudgets;
+
     public DashboardViewModel(DashboardService service, SettingsService settings, TimeProvider? clock = null)
     {
         _service = service;
@@ -126,7 +138,8 @@ public partial class DashboardViewModel : PageViewModelBase
         _clock = clock ?? TimeProvider.System;
         _month = YearMonth.Of(Today);
 
-        _settings.CategoriesChanged += (_, _) => { if (_data is not null) ShowCategories(); };
+        _settings.CategoriesChanged += (_, _) => { if (_data is not null) { ShowCategories(); ShowBudgets(_data); } };
+        _settings.BudgetsChanged += (_, _) => { if (_data is not null) ShowBudgets(_data); };
     }
 
     public override string Title => "Dashboard";
@@ -168,6 +181,7 @@ public partial class DashboardViewModel : PageViewModelBase
         ShowCategories();
         ShowTrend(data);
         ShowMembers(data);
+        ShowBudgets(data);
     }
 
     private void ShowTiles(DashboardData d)
@@ -253,6 +267,36 @@ public partial class DashboardViewModel : PageViewModelBase
         MemberSeries = new ISeries[] { Column("Spent", shares.Select(s => (double)s.Amount), SpentColor) };
         MemberXAxes = new[] { LabelAxis(shares.Select(s => s.Name.Length == 0 ? "(no member)" : s.Name)) };
         MemberYAxes = new[] { AmountAxis() };
+    }
+
+    private void ShowBudgets(DashboardData d)
+    {
+        var statuses = BudgetService.Calculate(_settings.ResolvedBudgets(), d.Expenses);
+        HasBudgets = statuses.Count > 0;
+        BudgetRows = statuses.Select(s =>
+        {
+            var (icon, color) = s.Budget.Target switch
+            {
+                BudgetTarget.Everything => (BudgetLook.EverythingIcon, BudgetLook.EverythingColor),
+                BudgetTarget.Category => LookOf(s.Budget.Name),
+                _ => (BudgetLook.MemberIcon, BudgetLook.MemberColor),
+            };
+            var left = s.Remaining >= 0 ? $"{Pkr.Format(s.Remaining)} left" : $"{Pkr.Format(-s.Remaining)} over";
+            return new BudgetRow(s.Budget.Label, icon, color,
+                (double)Math.Clamp(s.Share * 100, 0, 100),
+                $"{Pkr.Format(s.Spent)} of {Pkr.Format(s.Budget.Amount)} · {left}",
+                Percent(s.Share),
+                s.Level == BudgetLevel.Near, s.Level == BudgetLevel.Over);
+        }).ToList();
+    }
+
+    /// <summary>
+    /// Reloads if already showing something, e.g. after recurring expenses were added.
+    /// </summary>
+    public void Refresh()
+    {
+        if (_data is not null)
+            _ = LoadAsync();
     }
 
     private (string Icon, string Color) LookOf(string category) =>

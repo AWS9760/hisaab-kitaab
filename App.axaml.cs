@@ -28,7 +28,8 @@ public partial class App : Application
 
             desktop.MainWindow = new MainWindow
             {
-                DataContext = new MainWindowViewModel(settings, new DialogService(), new ExcelService(settings.DataFolder, () => settings.CreditCard), new LauncherService()),
+                DataContext = new MainWindowViewModel(settings, new DialogService(), new ExcelService(settings.DataFolder, () => settings.CreditCard, settings.ResolvedBudgets), new LauncherService(),
+                    Notifiers.ForThisPlatform()),
             };
         }
 

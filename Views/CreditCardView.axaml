@@ -9,15 +9,6 @@
              x:Class="HisaabKitaab.Views.CreditCardView"
              x:DataType="vm:CreditCardViewModel">
 
-    <UserControl.Styles>
-        <Style Selector="ProgressBar.high">
-            <Setter Property="Foreground" Value="{DynamicResource SystemFillColorCautionBrush}" />
-        </Style>
-        <Style Selector="ProgressBar.over">
-            <Setter Property="Foreground" Value="{DynamicResource SystemFillColorCriticalBrush}" />
-        </Style>
-    </UserControl.Styles>
-
     <Grid RowDefinitions="Auto,Auto,Auto,Auto,Auto,*" Margin="32,24,32,16">
 
         <!-- Header -->

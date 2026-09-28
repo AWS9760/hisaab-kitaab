@@ -6,6 +6,7 @@
              xmlns:vm="using:HisaabKitaab.ViewModels"
              xmlns:views="using:HisaabKitaab.Views"
              xmlns:svc="using:HisaabKitaab.Services"
+             xmlns:settings="using:HisaabKitaab.Views.Settings"
              mc:Ignorable="d" d:DesignWidth="900" d:DesignHeight="600"
              x:Class="HisaabKitaab.Views.SettingsView"
              x:DataType="vm:SettingsViewModel">
@@ -328,6 +329,10 @@
                     </ItemsControl>
                 </StackPanel>
             </Border>
+
+            <settings:BudgetsSection DataContext="{Binding Budgets}" />
+            <settings:RecurringSection DataContext="{Binding Recurring}" />
+            <settings:NotificationsSection DataContext="{Binding Notifications}" />
 
             <StackPanel Spacing="4">
                 <SelectableTextBlock Opacity="0.6" FontSize="12" TextWrapping="Wrap">
