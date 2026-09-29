@@ -21,7 +21,7 @@ public partial class SettingsViewModel : PageViewModelBase
     private string? _errorMessage;
 
     public SettingsViewModel(SettingsService settings, IDialogService dialogs, ExcelService excel, TimeProvider? clock = null,
-        ReminderService? reminders = null)
+        ReminderService? reminders = null, BackupService? backups = null, ILauncherService? launcher = null)
     {
         _settings = settings;
         _dialogs = dialogs;
@@ -37,17 +37,23 @@ public partial class SettingsViewModel : PageViewModelBase
         Budgets = new BudgetSettingsViewModel(settings);
         Recurring = new RecurringSettingsViewModel(settings, dialogs, _clock, reminders is null ? null : reminders.CheckAsync);
         Notifications = new NotificationSettingsViewModel(settings, reminders);
+        Backups = new BackupSettingsViewModel(settings, backups ?? new BackupService(settings.BackupOptions), excel, dialogs,
+            launcher ?? new LauncherService());
     }
 
     public override string Title => "Settings";
 
-    public override string Description => "Family members, categories, budgets, recurring expenses and notifications.";
+    public override string Description => "Family members, categories, budgets, recurring expenses, notifications and backups.";
 
     public BudgetSettingsViewModel Budgets { get; }
 
     public RecurringSettingsViewModel Recurring { get; }
 
     public NotificationSettingsViewModel Notifications { get; }
+
+    public BackupSettingsViewModel Backups { get; }
+
+    public override void OnNavigatedTo() => Backups.Refresh();
 
     public ObservableCollection<FamilyMemberItemViewModel> Members { get; } = new();
 

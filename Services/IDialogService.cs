@@ -9,4 +9,9 @@ public interface IDialogService
     /// Shows a confirm/cancel dialog. Returns true if the user chose <paramref name="confirmText"/>.
     /// </summary>
     Task<bool> ConfirmAsync(string title, string message, string confirmText, string cancelText = "Cancel");
+
+    /// <summary>
+    /// Lets the user choose a folder. Returns its full path, or null if they cancelled.
+    /// </summary>
+    Task<string?> PickFolderAsync(string title);
 }

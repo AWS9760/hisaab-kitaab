@@ -124,8 +124,16 @@ public class SettingsService
             var tempPath = FilePath + ".tmp";
             File.WriteAllText(tempPath, JsonSerializer.Serialize(_settings, SettingsJsonContext.Default.AppSettings));
             File.Move(tempPath, FilePath, overwrite: true);
+
+            // Under the lock, so a backup copies the file just written.
+            Saved?.Invoke(FilePath);
         }
     }
+
+    /// <summary>
+    /// Raised after settings.json has been written (with its path), on the saving thread.
+    /// </summary>
+    public event Action<string>? Saved;
 
     // ---- Family members -----------------------------------------------------
 
@@ -633,6 +641,38 @@ public class SettingsService
             return read();
     }
 
+    // ---- Backups --------------------------------------------------------------
+
+    public BackupSettings Backups => _settings.Backups;
+
+    /// <summary>
+    /// The folder backups go in: the one chosen, or "Backups" inside the data folder.
+    /// </summary>
+    public string BackupFolder => Locked(() =>
+        string.IsNullOrWhiteSpace(_settings.Backups.Folder) ? Path.Combine(DataFolder, "Backups") : _settings.Backups.Folder);
+
+    /// <summary>
+    /// Whether to back up, and where. Safe to call from any thread.
+    /// </summary>
+    public (bool Enabled, string Folder) BackupOptions() => Locked(() => (_settings.Backups.Enabled, BackupFolder));
+
+    /// <summary>
+    /// Turns backups on or off and sets their folder (null for the default).
+    /// </summary>
+    public void UpdateBackups(bool enabled, string? folder)
+    {
+        if (!string.IsNullOrWhiteSpace(folder) && !Path.IsPathFullyQualified(folder))
+            throw new ArgumentException("Choose a full folder path, e.g. D:\\Backups.", nameof(folder));
+
+        lock (_sync)
+        {
+            var b = _settings.Backups;
+            var old = (b.Enabled, b.Folder);
+            (b.Enabled, b.Folder) = (enabled, string.IsNullOrWhiteSpace(folder) ? null : folder.Trim());
+            SaveOrRollBack(() => (b.Enabled, b.Folder) = old);
+        }
+    }
+
     // ---- Helpers ------------------------------------------------------------
 
     private static AppSettings CreateDefaultSettings() => new() { Categories = CategoryStyles.CreateDefaults() };
@@ -732,6 +772,10 @@ public class SettingsService
             r.CategoryName ??= string.Empty;
             r.MemberName ??= string.Empty;
         }
+
+        settings.Backups ??= new BackupSettings();
+        if (settings.Backups.Folder is { } folder && (string.IsNullOrWhiteSpace(folder) || !Path.IsPathFullyQualified(folder)))
+            settings.Backups.Folder = null;
 
         settings.Notifications ??= new NotificationSettings();
         settings.Notifications.BudgetAlertsSent ??= new List<string>();

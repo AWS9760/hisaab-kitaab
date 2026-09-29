@@ -11,8 +11,8 @@ look, light and dark themes), [ClosedXML](https://github.com/ClosedXML/ClosedXML
 and [LiveCharts2](https://livecharts.dev/).
 
 > **Status:** early development. Dashboard, Settings, Expenses (with search and filters), Bank &
-> Cash, Currency, Credit Card, Zakat, budgets, recurring expenses and reminders work; backups and
-> file protection are next (see *Roadmap* below).
+> Cash, Currency, Credit Card, Zakat, budgets, recurring expenses, reminders and backups work;
+> all twelve stages of the plan are done (see *Roadmap* below).
 
 ## Where your data lives
 
@@ -220,6 +220,34 @@ on in *Settings → System → Notifications*; on Linux they use `notify-send`
 shown, the Notifications section says why, and the in-app warnings above
 still work.
 
+## Backups
+
+Every time the app saves a workbook (monthly or zakat) or your settings, it
+also copies the file to a **backup folder**, by default `Backups` inside your
+data folder:
+
+```
+Backups/2026/Sept_2026/Sept_2026 2026-09-29 14-05-12.xlsx
+Backups/2026/Zakat_2026/Zakat_2026 2026-09-29 14-06-40.xlsx
+Backups/Settings/settings 2026-09-29 14-07-03.json
+```
+
+- For each file it keeps the **newest 20 copies**, plus the **last copy of
+  each day for 30 days**. Older copies are deleted automatically (only files
+  named like backups; anything else you put in the folder is left alone).
+- In **Settings → Backups** you can turn backups off, **Open** the folder, or
+  **Change…** it. A folder on another drive, a USB stick or a cloud-synced
+  folder (OneDrive, Google Drive) also protects you if this disk fails. Backups
+  already made stay in the old folder.
+- **Restore an earlier copy:** choose a workbook, then **Restore** next to the
+  copy you want. The current file is backed up first (if it isn't already), so
+  a restore can be undone by restoring that copy. Close the workbook in Excel
+  first. Later months' carried-forward balances catch up automatically.
+- If a backup fails (for example the backup drive is unplugged), saving still
+  works and Settings shows what went wrong.
+- Settings can't be restored from inside the app (it's using them). To go back
+  to an earlier `settings.json`, close the app and copy the backup over it.
+
 ## Currency (cash count)
 
 On the **Currency** screen, enter how many of each note you have (₨ 5,000,
@@ -362,4 +390,4 @@ HisaabKitaab.Tests/  xUnit tests for services and view models
 9. ✅ Dashboard with charts (and the Summary sheet)
 10. ✅ Budgets, recurring expenses, notifications
 11. ✅ Zakat (separate yearly file)
-12. Backups and file protection
+12. ✅ Backups (password protection was left out by choice)

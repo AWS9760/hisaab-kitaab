@@ -41,6 +41,7 @@ public sealed class CarryForwardService : IDisposable
         _card = new CreditCardService(store);
         _zakat = new ZakatService(store);
         _store.Excel.MonthSaved += OnMonthSaved;
+        _store.Excel.ZakatSaved += OnZakatSaved;
     }
 
     /// <summary>
@@ -120,6 +121,18 @@ public sealed class CarryForwardService : IDisposable
             Queue(month);
     }
 
+    // A zakat workbook changed (e.g. restored from a backup): its months' copies of
+    // zakat given and later years' carried figures may be out of date.
+    private void OnZakatSaved(int year)
+    {
+        if (_syncing)
+            return;
+
+        lock (_lock)
+            _zakatPending = true;
+        Queue(new YearMonth(year, 1).AddMonths(-1));
+    }
+
     /// <summary>
     /// Runs one background sync at a time. Requests made while one is running
     /// are merged (the earliest month wins) and handled when it finishes.
@@ -166,7 +179,21 @@ public sealed class CarryForwardService : IDisposable
             if (from is { } f)
                 SyncAfter(f);
             if (zakat)
-                _zakat.SyncAllCarried();
+                SyncZakat();
+        }
+    }
+
+    private void SyncZakat()
+    {
+        var wasSyncing = _syncing;
+        _syncing = true;
+        try
+        {
+            _zakat.SyncAllCarried();
+        }
+        finally
+        {
+            _syncing = wasSyncing;
         }
     }
 
@@ -175,5 +202,6 @@ public sealed class CarryForwardService : IDisposable
         lock (_lock)
             _disposed = true;
         _store.Excel.MonthSaved -= OnMonthSaved;
+        _store.Excel.ZakatSaved -= OnZakatSaved;
     }
 }

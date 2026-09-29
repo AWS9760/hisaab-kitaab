@@ -333,6 +333,7 @@
             <settings:BudgetsSection DataContext="{Binding Budgets}" />
             <settings:RecurringSection DataContext="{Binding Recurring}" />
             <settings:NotificationsSection DataContext="{Binding Notifications}" />
+            <settings:BackupsSection DataContext="{Binding Backups}" />
 
             <StackPanel Spacing="4">
                 <SelectableTextBlock Opacity="0.6" FontSize="12" TextWrapping="Wrap">

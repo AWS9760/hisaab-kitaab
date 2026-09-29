@@ -16,6 +16,7 @@ public partial class MainWindowViewModel : ViewModelBase
     private readonly RecurringService _recurring;
     private readonly ReminderService _reminders;
     private readonly ILauncherService _launcher;
+    private readonly BackupService _backups;
 
     // Background work (recurring expenses) reports back here to update pages on the UI thread.
     private readonly SynchronizationContext? _ui = SynchronizationContext.Current;
@@ -40,6 +41,11 @@ public partial class MainWindowViewModel : ViewModelBase
         _recurring = new RecurringService(settings, excel);
         _reminders = new ReminderService(settings, _store, _recurring, notifier ?? new NullNotifier());
         _launcher = launcher;
+
+        // Every saved workbook and settings file is copied to the backup folder.
+        _backups = new BackupService(settings.BackupOptions);
+        excel.WorkbookSaved += path => _backups.BackUpWorkbook(path);
+        settings.Saved += path => _backups.BackUpSettings(path);
 
         _recurring.ExpensesAdded += (_, result) => OnUiThread(() => OnRecurringAdded(result));
 
@@ -113,7 +119,7 @@ public partial class MainWindowViewModel : ViewModelBase
                 AppPage.Currency => new CurrencyViewModel(new BankCashService(_store), _launcher),
                 AppPage.CreditCard => new CreditCardViewModel(new CreditCardService(_store), _settings, _dialogs, _launcher),
                 AppPage.Zakat => new ZakatViewModel(new ZakatService(_store), _dialogs, _launcher),
-                AppPage.Settings => new SettingsViewModel(_settings, _dialogs, _excel, reminders: _reminders),
+                AppPage.Settings => new SettingsViewModel(_settings, _dialogs, _excel, reminders: _reminders, backups: _backups, launcher: _launcher),
                 _ => throw new ArgumentOutOfRangeException(nameof(page), page, null),
             };
             _pages[page] = vm;

@@ -1,0 +1,86 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:ui="using:FluentAvalonia.UI.Controls"
+             xmlns:vm="using:HisaabKitaab.ViewModels"
+             xmlns:svc="using:HisaabKitaab.Services"
+             x:Class="HisaabKitaab.Views.Settings.BackupsSection"
+             x:DataType="vm:BackupSettingsViewModel">
+
+    <!-- Uses the card and row styles from SettingsView. -->
+    <Border Classes="card">
+        <StackPanel Spacing="12">
+            <Grid ColumnDefinitions="*,Auto">
+                <StackPanel Spacing="2">
+                    <TextBlock Text="Backups" Theme="{StaticResource SubtitleTextBlockStyle}" />
+                    <TextBlock Text="{Binding RetentionText}" TextWrapping="Wrap" Opacity="0.75" />
+                </StackPanel>
+                <ToggleSwitch Grid.Column="1" IsChecked="{Binding IsEnabled}" OnContent="On" OffContent="Off" MinWidth="0"
+                              VerticalAlignment="Top" Margin="12,0,0,0" AutomationProperties.Name="Back up on every save" />
+            </Grid>
+
+            <Grid ColumnDefinitions="*,Auto">
+                <StackPanel VerticalAlignment="Center" Spacing="2">
+                    <TextBlock Classes="caption" Text="Backup folder" />
+                    <SelectableTextBlock Text="{Binding FolderText}" TextWrapping="Wrap" />
+                    <TextBlock Text="{Binding LastBackupText}" FontSize="12" Opacity="0.7" />
+                </StackPanel>
+                <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="8" VerticalAlignment="Center" Margin="12,0,0,0">
+                    <Button Content="Open" Command="{Binding OpenFolderCommand}" ToolTip.Tip="Open the backup folder" />
+                    <Button Content="Change…" Command="{Binding ChangeFolderCommand}"
+                            ToolTip.Tip="A folder on another drive, or one synced to the cloud, protects against losing this disk" />
+                    <Button Content="Use default" Command="{Binding UseDefaultFolderCommand}" IsVisible="{Binding IsCustomFolder}" />
+                </StackPanel>
+            </Grid>
+
+            <ui:InfoBar IsOpen="{Binding HasBackupProblem}" IsVisible="{Binding HasBackupProblem}" IsClosable="False"
+                        Severity="Warning" Title="A backup failed" Message="{Binding BackupProblem}" />
+
+            <!-- Restore -->
+            <StackPanel Spacing="8" Margin="0,4,0,0">
+                <TextBlock Text="Restore an earlier copy" FontWeight="SemiBold" />
+                <TextBlock Text="No backups yet. They appear here once a workbook has been saved with backups on."
+                           Opacity="0.6" TextWrapping="Wrap" IsVisible="{Binding !HasFiles}" />
+                <ComboBox ItemsSource="{Binding Files}" SelectedItem="{Binding SelectedFile}" IsVisible="{Binding HasFiles}"
+                          PlaceholderText="Choose a workbook…" MinWidth="260" AutomationProperties.Name="Workbook to restore">
+                    <ComboBox.ItemTemplate>
+                        <DataTemplate x:DataType="svc:BackedUpWorkbook">
+                            <TextBlock Text="{Binding FileName}" />
+                        </DataTemplate>
+                    </ComboBox.ItemTemplate>
+                </ComboBox>
+
+                <ItemsControl ItemsSource="{Binding Versions}">
+                    <ItemsControl.ItemsPanel>
+                        <ItemsPanelTemplate>
+                            <StackPanel Spacing="2" />
+                        </ItemsPanelTemplate>
+                    </ItemsControl.ItemsPanel>
+                    <ItemsControl.ItemTemplate>
+                        <DataTemplate x:DataType="vm:BackupVersionRow">
+                            <Border Classes="memberRow">
+                                <Grid ColumnDefinitions="*,Auto,Auto" MinHeight="36">
+                                    <StackPanel Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
+                                        <TextBlock Text="{Binding TakenText}" VerticalAlignment="Center" />
+                                        <Border Background="{DynamicResource SubtleFillColorSecondaryBrush}" CornerRadius="4" Padding="6,1"
+                                                IsVisible="{Binding IsNewest}" VerticalAlignment="Center">
+                                            <TextBlock Text="newest" FontSize="11" Opacity="0.8" />
+                                        </Border>
+                                    </StackPanel>
+                                    <TextBlock Grid.Column="1" Text="{Binding SizeText}" FontSize="12" Opacity="0.7"
+                                               VerticalAlignment="Center" Margin="12,0" />
+                                    <Button Grid.Column="2" Content="Restore" Command="{Binding RestoreCommand}"
+                                            IsEnabled="{Binding !$parent[ItemsControl].((vm:BackupSettingsViewModel)DataContext).IsBusy}" />
+                                </Grid>
+                            </Border>
+                        </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                </ItemsControl>
+            </StackPanel>
+
+            <TextBlock Text="{Binding StatusMessage}" Foreground="{DynamicResource SystemFillColorSuccessBrush}"
+                       TextWrapping="Wrap" IsVisible="{Binding StatusMessage, Converter={x:Static ObjectConverters.IsNotNull}}" />
+            <ui:InfoBar IsOpen="{Binding HasError}" IsVisible="{Binding HasError}" IsClosable="False"
+                        Severity="Error" Message="{Binding ErrorMessage}" />
+        </StackPanel>
+    </Border>
+</UserControl>

@@ -983,10 +983,66 @@ public class ExcelService
             throw new WorkbookLockedException(path, ex);
         }
 
+        WorkbookSaved?.Invoke(path);
         if (month != default)
             MonthSaved?.Invoke(month);
         if (isZakat)
             ZakatSaved?.Invoke(zakatYear);
+    }
+
+    /// <summary>
+    /// Raised after any workbook (monthly or zakat) has been written, with its
+    /// path, on the saving thread and still holding the lock, so a backup can
+    /// copy exactly what was saved.
+    /// </summary>
+    public event Action<string>? WorkbookSaved;
+
+    /// <summary>
+    /// Replaces <paramref name="fileName"/> in <paramref name="year"/>'s folder
+    /// with a backup copy. The backup must open as a workbook first. Raised
+    /// events are the same as for a save, so later months' figures catch up.
+    /// </summary>
+    /// <exception cref="KeyNotFoundException">The backup no longer exists.</exception>
+    /// <exception cref="InvalidDataException">The backup isn't a readable workbook.</exception>
+    public void RestoreWorkbook(int year, string fileName, string backupPath)
+    {
+        lock (_gate)
+        {
+            var isMonth = YearMonth.TryParseFileName(fileName, out var month) && month.Year == year;
+            var isZakat = TryParseZakatFileName(fileName, out var zakatYear) && zakatYear == year;
+            if (!isMonth && !isZakat)
+                throw new ArgumentException($"{fileName} isn't one of Hisaab Kitaab's workbooks.", nameof(fileName));
+            if (!File.Exists(backupPath))
+                throw new KeyNotFoundException($"That backup of {fileName} no longer exists.");
+
+            using (Open(backupPath))
+            {
+                // Just checking it opens (and isn't from a newer version).
+            }
+
+            var path = Path.Combine(GetYearFolder(year), fileName);
+            Directory.CreateDirectory(Path.GetDirectoryName(path)!);
+            var tempPath = Path.Combine(Path.GetDirectoryName(path)!, $"~{fileName}.{Guid.NewGuid():N}.tmp");
+            try
+            {
+                File.Copy(backupPath, tempPath);
+
+                // A fresh timestamp, so cached copies of the old file are never mistaken for it.
+                File.SetLastWriteTimeUtc(tempPath, DateTime.UtcNow);
+                File.Move(tempPath, path, overwrite: true);
+            }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+            {
+                TryDelete(tempPath);
+                throw new WorkbookLockedException(path, ex);
+            }
+
+            WorkbookSaved?.Invoke(path);
+            if (isMonth)
+                MonthSaved?.Invoke(month);
+            if (isZakat)
+                ZakatSaved?.Invoke(year);
+        }
     }
 
     private static void WriteTo(string tempPath, XLWorkbook workbook, bool evaluateFormulas)
