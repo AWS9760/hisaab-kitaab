@@ -46,7 +46,7 @@ public class BankCashService
                 m,
                 sheet.ManualOpeningBank ?? carriedBank, sheet.ManualOpeningBank is not null,
                 sheet.ManualOpeningCash ?? carriedCash, sheet.ManualOpeningCash is not null,
-                sheet.Entries, expenses, _store.LoadCard(m).Repayments);
+                sheet.Entries, expenses, _store.LoadCard(m).Repayments, ZakatService.GivenIn(_store, m));
             (carriedBank, carriedCash) = (balances.ClosingBank, balances.ClosingCash);
         }
 

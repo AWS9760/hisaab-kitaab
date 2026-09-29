@@ -145,6 +145,12 @@ public record BankCashSheetData(
 
     public decimal? StoredOpeningCash { get; init; }
 
+    /// <summary>
+    /// The zakat payments currently copied onto the sheet. Used to tell when
+    /// the copy is out of date with the zakat workbooks.
+    /// </summary>
+    public IReadOnlyList<ZakatCopyLine> StoredZakat { get; init; } = Array.Empty<ZakatCopyLine>();
+
     public static BankCashSheetData Empty(YearMonth month, bool fileExists = false, string? error = null) =>
         new(month, fileExists, null, null, Array.Empty<BankCashEntry>(), Array.Empty<SheetProblem>(), error);
 }

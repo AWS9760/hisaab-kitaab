@@ -5,7 +5,9 @@ namespace HisaabKitaab.Services;
 /// <summary>
 /// Keeps the carried-forward opening figures written in each workbook (bank
 /// balance, cash in hand, amount owed on the card) in step with the previous
-/// month's closing figures, so the sheets are right when opened in Excel.
+/// month's closing figures, so the sheets are right when opened in Excel. It
+/// also refreshes a month's copy of zakat given when it no longer matches the
+/// zakat workbooks, and (at startup) the amount carried into each zakat year.
 ///
 /// The app never relies on those written figures itself (it always works them
 /// out), so this is only about what Excel shows. It runs in the background
@@ -16,10 +18,14 @@ public sealed class CarryForwardService : IDisposable
     private readonly WorkbookStore _store;
     private readonly BankCashService _bankCash;
     private readonly CreditCardService _card;
+    private readonly ZakatService _zakat;
     private readonly object _lock = new();
 
     // Earliest month whose later months need checking, or null when idle.
     private YearMonth? _pendingFrom;
+
+    // Whether the zakat workbooks' carried-forward figures need checking.
+    private bool _zakatPending;
     private Task _running = Task.CompletedTask;
     private bool _draining;
     private bool _disposed;
@@ -33,6 +39,7 @@ public sealed class CarryForwardService : IDisposable
         _store = store;
         _bankCash = new BankCashService(store);
         _card = new CreditCardService(store);
+        _zakat = new ZakatService(store);
         _store.Excel.MonthSaved += OnMonthSaved;
     }
 
@@ -54,9 +61,11 @@ public sealed class CarryForwardService : IDisposable
     /// </summary>
     public void StartSyncAll()
     {
+        lock (_lock)
+            _zakatPending = true;
+
         var earliest = _store.Excel.GetExistingMonths().FirstOrDefault();
-        if (earliest != default)
-            Queue(earliest.AddMonths(-1));
+        Queue(earliest != default ? earliest.AddMonths(-1) : null);
     }
 
     /// <summary>
@@ -81,6 +90,13 @@ public sealed class CarryForwardService : IDisposable
                 {
                     if (_bankCash.SyncCarriedOpenings(_bankCash.GetBalances(month)))
                         written++;
+                    if (_zakat.CopyIsStale(month))
+                    {
+                        _store.Excel.RefreshMonthWorkbook(month);
+                        _store.Invalidate(month);
+                        written++;
+                    }
+
                     if (_card.SyncCarriedOpening(_card.GetMonth(month)))
                         written++;
                 }
@@ -107,15 +123,17 @@ public sealed class CarryForwardService : IDisposable
     /// <summary>
     /// Runs one background sync at a time. Requests made while one is running
     /// are merged (the earliest month wins) and handled when it finishes.
+    /// A null <paramref name="from"/> just makes sure pending zakat work runs.
     /// </summary>
-    private void Queue(YearMonth from)
+    private void Queue(YearMonth? from)
     {
         lock (_lock)
         {
             if (_disposed)
                 return;
 
-            _pendingFrom = _pendingFrom is { } p && p < from ? p : from;
+            if (from is { } f)
+                _pendingFrom = _pendingFrom is { } p && p < f ? p : f;
             if (!_draining)
             {
                 _draining = true;
@@ -128,22 +146,27 @@ public sealed class CarryForwardService : IDisposable
     {
         while (true)
         {
-            YearMonth from;
+            YearMonth? from;
+            bool zakat;
             lock (_lock)
             {
-                if (_pendingFrom is not { } next || _disposed)
+                if ((_pendingFrom is null && !_zakatPending) || _disposed)
                 {
                     // Cleared under the lock, so a request arriving now starts a new worker.
                     _pendingFrom = null;
+                    _zakatPending = false;
                     _draining = false;
                     return;
                 }
 
-                from = next;
-                _pendingFrom = null;
+                (from, zakat) = (_pendingFrom, _zakatPending);
+                (_pendingFrom, _zakatPending) = (null, false);
             }
 
-            SyncAfter(from);
+            if (from is { } f)
+                SyncAfter(f);
+            if (zakat)
+                _zakat.SyncAllCarried();
         }
     }
 

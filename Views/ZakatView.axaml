@@ -4,21 +4,311 @@
              xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
              xmlns:ui="using:FluentAvalonia.UI.Controls"
              xmlns:vm="using:HisaabKitaab.ViewModels"
-             mc:Ignorable="d" d:DesignWidth="900" d:DesignHeight="600"
+             xmlns:views="using:HisaabKitaab.Views"
+             mc:Ignorable="d" d:DesignWidth="1000" d:DesignHeight="800"
              x:Class="HisaabKitaab.Views.ZakatView"
              x:DataType="vm:ZakatViewModel">
-    <Design.DataContext>
-        <vm:ZakatViewModel />
-    </Design.DataContext>
 
-    <StackPanel Margin="32,24" Spacing="8">
-        <TextBlock Text="{Binding Title}" Theme="{StaticResource TitleTextBlockStyle}" />
-        <TextBlock Text="{Binding Description}" Theme="{StaticResource BodyTextBlockStyle}" Opacity="0.75" />
-        <ui:InfoBar Margin="0,16,0,0"
-                    IsOpen="True"
-                    IsClosable="False"
-                    Severity="Informational"
-                    Title="Not built yet"
-                    Message="This screen arrives in stage 11 of the build plan." />
-    </StackPanel>
+    <Grid RowDefinitions="Auto,Auto,Auto,Auto,Auto,*" Margin="32,24,32,16">
+
+        <!-- Header -->
+        <Grid ColumnDefinitions="*,Auto" Margin="0,0,0,16">
+            <StackPanel Spacing="4" VerticalAlignment="Center">
+                <TextBlock Text="{Binding Title}" Theme="{StaticResource TitleTextBlockStyle}" />
+                <TextBlock Text="{Binding Description}" Opacity="0.75" TextWrapping="Wrap" />
+            </StackPanel>
+            <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
+                <ui:ProgressRing IsIndeterminate="True" Width="20" Height="20" IsVisible="{Binding IsBusy}" />
+                <Button Theme="{StaticResource TransparentButton}" Command="{Binding PreviousYearCommand}"
+                        ToolTip.Tip="Previous zakat year" AutomationProperties.Name="Previous zakat year">
+                    <ui:SymbolIcon Symbol="ChevronLeft" FontSize="16" />
+                </Button>
+                <TextBlock Text="{Binding YearTitle}" Theme="{StaticResource SubtitleTextBlockStyle}"
+                           MinWidth="140" TextAlignment="Center" VerticalAlignment="Center" />
+                <Button Theme="{StaticResource TransparentButton}" Command="{Binding NextYearCommand}"
+                        ToolTip.Tip="Next zakat year" AutomationProperties.Name="Next zakat year">
+                    <ui:SymbolIcon Symbol="ChevronRight" FontSize="16" />
+                </Button>
+                <Button Content="This year" Command="{Binding GoToCurrentYearCommand}" IsVisible="{Binding !IsCurrentYear}" />
+                <Button Command="{Binding ReloadCommand}" ToolTip.Tip="Reload from file" AutomationProperties.Name="Reload from file">
+                    <ui:SymbolIcon Symbol="Refresh" FontSize="16" />
+                </Button>
+                <Button Command="{Binding OpenWorkbookCommand}" ToolTip.Tip="{Binding WorkbookName, StringFormat='Open {0}'}">
+                    <StackPanel Orientation="Horizontal" Spacing="6">
+                        <ui:SymbolIcon Symbol="OpenFile" FontSize="16" />
+                        <TextBlock Text="Open in Excel" />
+                    </StackPanel>
+                </Button>
+            </StackPanel>
+        </Grid>
+
+        <!-- Summary -->
+        <Grid Grid.Row="1" ColumnDefinitions="*,12,*,12,*" Margin="0,0,0,12">
+            <Border Classes="card" Padding="20,14">
+                <StackPanel Spacing="4">
+                    <TextBlock Classes="caption" Text="🤲 Remaining" />
+                    <TextBlock Text="{Binding RemainingText}" FontSize="28" FontWeight="SemiBold"
+                               Classes.negative="{Binding IsOverGiven}" />
+                    <TextBlock Text="{Binding RemainingDetail}" FontSize="12" Opacity="0.8" />
+                    <Button Theme="{StaticResource TransparentButton}" Padding="4,2" Margin="-4,2,0,0"
+                            HorizontalAlignment="Left" ToolTip.Tip="Change the dates this zakat year runs over">
+                        <StackPanel Orientation="Horizontal" Spacing="6">
+                            <TextBlock Text="{Binding PeriodText, StringFormat='📅 {0}'}" FontSize="12" Opacity="0.8" />
+                            <ui:SymbolIcon Symbol="Edit" FontSize="12" Opacity="0.8" />
+                        </StackPanel>
+                        <Button.Flyout>
+                            <Flyout Placement="BottomEdgeAlignedLeft">
+                                <StackPanel Width="320" Spacing="10">
+                                    <TextBlock Text="{Binding YearTitle, StringFormat='{}{0}: the dates it runs over'}" FontWeight="SemiBold" />
+                                    <TextBlock Text="Pick your own, e.g. Ramadan to Ramadan. It must start this year and be at most a year long."
+                                               TextWrapping="Wrap" FontSize="12" Opacity="0.75" />
+                                    <StackPanel>
+                                        <TextBlock Classes="caption" Text="Starts" />
+                                        <CalendarDatePicker SelectedDate="{Binding PeriodStartInput}" HorizontalAlignment="Stretch"
+                                                            SelectedDateFormat="Custom" CustomDateFormatString="ddd, d MMM yyyy"
+                                                            AutomationProperties.Name="Zakat year starts" />
+                                    </StackPanel>
+                                    <StackPanel>
+                                        <TextBlock Classes="caption" Text="Ends" />
+                                        <CalendarDatePicker SelectedDate="{Binding PeriodEndInput}" HorizontalAlignment="Stretch"
+                                                            SelectedDateFormat="Custom" CustomDateFormatString="ddd, d MMM yyyy"
+                                                            AutomationProperties.Name="Zakat year ends" />
+                                    </StackPanel>
+                                    <TextBlock Text="Or end it after:" FontSize="12" Opacity="0.75" />
+                                    <StackPanel Orientation="Horizontal" Spacing="6">
+                                        <Button Content="A full year" FontSize="12" Padding="8,2" Command="{Binding UseFullYearCommand}" />
+                                        <Button Content="An Islamic year (354 days)" FontSize="12" Padding="8,2" Command="{Binding UseIslamicYearCommand}" />
+                                    </StackPanel>
+                                    <Button Classes="accent" Content="Save dates" Command="{Binding SavePeriodCommand}" />
+                                </StackPanel>
+                            </Flyout>
+                        </Button.Flyout>
+                    </Button>
+                </StackPanel>
+            </Border>
+
+            <Border Grid.Column="2" Classes="card" Padding="20,14">
+                <StackPanel Spacing="4">
+                    <TextBlock Classes="caption" Text="📥 Taken out" />
+                    <TextBlock Text="{Binding TakenOutText}" FontSize="20" FontWeight="SemiBold" />
+                    <ItemsControl ItemsSource="{Binding Breakdown}">
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate x:DataType="x:String">
+                                <TextBlock Text="{Binding}" FontSize="12" Opacity="0.7" />
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+                    <Button Theme="{StaticResource TransparentButton}" Padding="4,2" Margin="-4,2,0,0"
+                            HorizontalAlignment="Left" ToolTip.Tip="Change the amount carried from last year">
+                        <StackPanel Orientation="Horizontal" Spacing="6">
+                            <TextBlock Text="{Binding CarriedText}" FontSize="12" Opacity="0.8" TextWrapping="Wrap" />
+                            <ui:SymbolIcon Symbol="Edit" FontSize="12" Opacity="0.8" />
+                        </StackPanel>
+                        <Button.Flyout>
+                            <Flyout Placement="BottomEdgeAlignedLeft">
+                                <StackPanel Width="300" Spacing="10">
+                                    <TextBlock Text="Carried from last year" FontWeight="SemiBold" />
+                                    <TextBlock Text="Zakat still to give from before this year. Otherwise it's whatever last year had left."
+                                               TextWrapping="Wrap" FontSize="12" Opacity="0.75" />
+                                    <ui:NumberBox Value="{Binding CarriedInput, Mode=TwoWay}" SpinButtonPlacementMode="Hidden"
+                                                  AcceptsExpression="True" HorizontalAlignment="Stretch"
+                                                  AutomationProperties.Name="Carried from last year" />
+                                    <StackPanel Orientation="Horizontal" Spacing="8">
+                                        <Button Classes="accent" Content="Set" Command="{Binding SetCarriedCommand}" />
+                                        <Button Content="Carry forward instead" Command="{Binding CarryForwardCommand}"
+                                                IsVisible="{Binding CarriedIsManual}" />
+                                    </StackPanel>
+                                </StackPanel>
+                            </Flyout>
+                        </Button.Flyout>
+                    </Button>
+                </StackPanel>
+            </Border>
+
+            <Border Grid.Column="4" Classes="card" Padding="20,14">
+                <StackPanel Spacing="4">
+                    <TextBlock Classes="caption" Text="💝 Given" />
+                    <TextBlock Text="{Binding GivenText}" FontSize="20" FontWeight="SemiBold" />
+                    <TextBlock Text="{Binding GivenDetail}" FontSize="12" Opacity="0.7" TextWrapping="Wrap" />
+                </StackPanel>
+            </Border>
+        </Grid>
+
+        <!-- Warnings -->
+        <StackPanel Grid.Row="2" Spacing="8">
+            <ui:InfoBar IsOpen="{Binding HasWarning}" IsVisible="{Binding HasWarning}" IsClosable="False"
+                        Severity="Informational" Message="{Binding Warning}" Margin="0,0,0,4" />
+            <ui:InfoBar IsOpen="{Binding HasProblems}" IsVisible="{Binding HasProblems}"
+                        IsClosable="False" Severity="Warning" Title="Some rows need fixing"
+                        Message="These rows couldn't be read and aren't counted. Fix them in Excel, then reload." Margin="0,0,0,4">
+                <ItemsControl ItemsSource="{Binding ProblemLines}" Margin="0,0,0,8">
+                    <ItemsControl.ItemTemplate>
+                        <DataTemplate x:DataType="x:String">
+                            <TextBlock FontSize="12" TextWrapping="Wrap" Text="{Binding}" />
+                        </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                </ItemsControl>
+            </ui:InfoBar>
+        </StackPanel>
+
+        <!-- Log zakat -->
+        <Border Grid.Row="3" Classes="card" Padding="16" Margin="0,0,0,12">
+            <StackPanel x:Name="EntryForm" Spacing="12">
+                <Grid ColumnDefinitions="Auto,*">
+                    <TextBlock Text="{Binding FormTitle}" Theme="{StaticResource BodyStrongTextBlockStyle}" />
+                    <TextBlock Grid.Column="1" Text="{Binding StatusMessage}" HorizontalAlignment="Right" TextTrimming="CharacterEllipsis"
+                               Margin="12,0,0,0" Foreground="{DynamicResource SystemFillColorSuccessBrush}" />
+                </Grid>
+
+                <Grid ColumnDefinitions="Auto,12,*,12,*,12,Auto" RowDefinitions="Auto,12,Auto">
+                    <StackPanel>
+                        <TextBlock Classes="caption" Text="Zakat" />
+                        <ListBox Classes="segmented" ItemsSource="{Binding TypeOptions}" SelectedItem="{Binding EntryType}"
+                                 AutomationProperties.Name="Set aside or given">
+                            <ListBox.ItemsPanel>
+                                <ItemsPanelTemplate>
+                                    <StackPanel Orientation="Horizontal" />
+                                </ItemsPanelTemplate>
+                            </ListBox.ItemsPanel>
+                            <ListBox.ItemTemplate>
+                                <DataTemplate x:DataType="vm:ZakatTypeOption">
+                                    <StackPanel Orientation="Horizontal" Spacing="6">
+                                        <TextBlock Text="{Binding Icon}" />
+                                        <TextBlock Text="{Binding Name}" />
+                                    </StackPanel>
+                                </DataTemplate>
+                            </ListBox.ItemTemplate>
+                        </ListBox>
+                    </StackPanel>
+                    <StackPanel Grid.Column="2">
+                        <Grid ColumnDefinitions="*,Auto">
+                            <TextBlock Classes="caption" Text="Amount (₨)" />
+                            <Button Grid.Column="1" Content="Give what's left" FontSize="11" Padding="4,0" Margin="0,0,0,2"
+                                    Theme="{StaticResource TransparentButton}" Command="{Binding GiveRemainingCommand}" />
+                        </Grid>
+                        <ui:NumberBox x:Name="AmountBox" Value="{Binding EntryAmount, Mode=TwoWay}"
+                                      AcceptsExpression="True" SpinButtonPlacementMode="Hidden"
+                                      HorizontalAlignment="Stretch" PlaceholderText="e.g. 25000"
+                                      AutomationProperties.Name="Amount" />
+                    </StackPanel>
+                    <StackPanel Grid.Column="4">
+                        <TextBlock Classes="caption" Text="Date" />
+                        <CalendarDatePicker SelectedDate="{Binding EntryDate}" HorizontalAlignment="Stretch"
+                                            SelectedDateFormat="Custom" CustomDateFormatString="ddd, d MMM yyyy"
+                                            AutomationProperties.Name="Date" />
+                    </StackPanel>
+                    <StackPanel Grid.Column="6" IsVisible="{Binding IsGiven}">
+                        <TextBlock Classes="caption" Text="Paid" />
+                        <ListBox Classes="segmented" ItemsSource="{Binding FromOptions}" SelectedItem="{Binding EntryFrom}"
+                                 AutomationProperties.Name="Paid from">
+                            <ListBox.ItemsPanel>
+                                <ItemsPanelTemplate>
+                                    <StackPanel Orientation="Horizontal" />
+                                </ItemsPanelTemplate>
+                            </ListBox.ItemsPanel>
+                            <ListBox.ItemTemplate>
+                                <DataTemplate x:DataType="vm:AccountOption">
+                                    <StackPanel Orientation="Horizontal" Spacing="6">
+                                        <TextBlock Text="{Binding Icon}" />
+                                        <TextBlock Text="{Binding Name}" />
+                                    </StackPanel>
+                                </DataTemplate>
+                            </ListBox.ItemTemplate>
+                        </ListBox>
+                    </StackPanel>
+                    <Grid Grid.Row="2" Grid.ColumnSpan="7" ColumnDefinitions="*,12,*,12,Auto">
+                        <StackPanel IsVisible="{Binding IsGiven}">
+                            <TextBlock Classes="caption" Text="Given to" />
+                            <TextBox Text="{Binding EntryRecipient}" Watermark="Optional, e.g. the mosque, a neighbour"
+                                     AutomationProperties.Name="Given to" />
+                        </StackPanel>
+                        <StackPanel Grid.Column="2">
+                            <TextBlock Classes="caption" Text="Note" />
+                            <TextBox Text="{Binding EntryNote}" Watermark="Optional"
+                                     AutomationProperties.Name="Note" />
+                        </StackPanel>
+                        <StackPanel Grid.Column="4" Orientation="Horizontal" Spacing="8" VerticalAlignment="Bottom">
+                            <Button Content="Cancel" Command="{Binding CancelEditCommand}" IsVisible="{Binding IsEditing}" />
+                            <Button Classes="accent" Command="{Binding SaveEntryCommand}" MinWidth="110">
+                                <StackPanel Orientation="Horizontal" Spacing="6">
+                                    <ui:SymbolIcon Symbol="Add" FontSize="16" IsVisible="{Binding !IsEditing}" />
+                                    <ui:SymbolIcon Symbol="Save" FontSize="16" IsVisible="{Binding IsEditing}" />
+                                    <TextBlock Text="{Binding SaveButtonText}" />
+                                </StackPanel>
+                            </Button>
+                        </StackPanel>
+                    </Grid>
+                </Grid>
+
+                <TextBlock Text="Zakat given from the bank or in cash comes off that balance on Bank &amp; Cash. Setting zakat aside doesn't move any money."
+                           FontSize="12" Opacity="0.6" TextWrapping="Wrap" />
+
+                <ui:InfoBar IsOpen="{Binding HasError}" IsVisible="{Binding HasError}"
+                            IsClosable="False" Severity="Error" Message="{Binding ErrorMessage}" />
+            </StackPanel>
+        </Border>
+
+        <TextBlock Grid.Row="4" Text="Set aside and given" Theme="{StaticResource BodyStrongTextBlockStyle}" Margin="0,0,0,6" />
+
+        <TextBlock Grid.Row="5" Text="Nothing logged for this zakat year yet."
+                   Opacity="0.6" HorizontalAlignment="Center" TextWrapping="Wrap" TextAlignment="Center"
+                   Margin="0,24" IsVisible="{Binding !HasRows}" />
+
+        <DataGrid Grid.Row="5" x:Name="ZakatGrid"
+                  ItemsSource="{Binding Rows}" IsVisible="{Binding HasRows}"
+                  IsReadOnly="True" CanUserSortColumns="False" CanUserResizeColumns="True"
+                  GridLinesVisibility="Horizontal" HeadersVisibility="Column" SelectionMode="Single"
+                  DoubleTapped="OnGridDoubleTapped">
+            <DataGrid.Columns>
+                <DataGridTextColumn Header="Date" x:DataType="vm:ZakatRowViewModel" Binding="{Binding DateText}" Width="140" />
+                <DataGridTemplateColumn Header="Details" Width="*" MinWidth="200">
+                    <DataGridTemplateColumn.CellTemplate>
+                        <DataTemplate x:DataType="vm:ZakatRowViewModel">
+                            <StackPanel Orientation="Horizontal" Spacing="8" Margin="12,0" VerticalAlignment="Center">
+                                <Border Width="24" Height="24" CornerRadius="12"
+                                        Background="{Binding Color, Converter={x:Static views:AppConverters.HexToTint}}">
+                                    <TextBlock Text="{Binding Icon}" FontSize="12" HorizontalAlignment="Center" VerticalAlignment="Center" />
+                                </Border>
+                                <TextBlock Text="{Binding Title}" VerticalAlignment="Center" FontWeight="SemiBold" />
+                                <TextBlock Text="{Binding Detail}" VerticalAlignment="Center" Opacity="0.7" TextTrimming="CharacterEllipsis" />
+                            </StackPanel>
+                        </DataTemplate>
+                    </DataGridTemplateColumn.CellTemplate>
+                </DataGridTemplateColumn>
+                <DataGridTemplateColumn Header="Change" Width="130">
+                    <DataGridTemplateColumn.CellTemplate>
+                        <DataTemplate x:DataType="vm:ZakatRowViewModel">
+                            <TextBlock Text="{Binding ChangeText}" HorizontalAlignment="Right" VerticalAlignment="Center" Margin="12,0" />
+                        </DataTemplate>
+                    </DataGridTemplateColumn.CellTemplate>
+                </DataGridTemplateColumn>
+                <DataGridTemplateColumn Header="Remaining after" Width="150">
+                    <DataGridTemplateColumn.CellTemplate>
+                        <DataTemplate x:DataType="vm:ZakatRowViewModel">
+                            <TextBlock Text="{Binding RemainingText}" HorizontalAlignment="Right" VerticalAlignment="Center"
+                                       Margin="12,0" FontWeight="SemiBold" Classes.negative="{Binding IsRemainingNegative}" />
+                        </DataTemplate>
+                    </DataGridTemplateColumn.CellTemplate>
+                </DataGridTemplateColumn>
+                <DataGridTemplateColumn Width="84" CanUserResize="False">
+                    <DataGridTemplateColumn.CellTemplate>
+                        <DataTemplate x:DataType="vm:ZakatRowViewModel">
+                            <StackPanel Orientation="Horizontal" Spacing="2" HorizontalAlignment="Right" Margin="0,0,8,0">
+                                <Button Theme="{StaticResource TransparentButton}"
+                                        Command="{Binding $parent[DataGrid].((vm:ZakatViewModel)DataContext).BeginEditCommand}"
+                                        CommandParameter="{Binding}" ToolTip.Tip="Edit" AutomationProperties.Name="Edit entry">
+                                    <ui:SymbolIcon Symbol="Edit" FontSize="15" />
+                                </Button>
+                                <Button Theme="{StaticResource TransparentButton}"
+                                        Command="{Binding $parent[DataGrid].((vm:ZakatViewModel)DataContext).DeleteCommand}"
+                                        CommandParameter="{Binding}" ToolTip.Tip="Delete" AutomationProperties.Name="Delete entry">
+                                    <ui:SymbolIcon Symbol="Delete" FontSize="15" />
+                                </Button>
+                            </StackPanel>
+                        </DataTemplate>
+                    </DataGridTemplateColumn.CellTemplate>
+                </DataGridTemplateColumn>
+            </DataGrid.Columns>
+        </DataGrid>
+    </Grid>
 </UserControl>

@@ -17,6 +17,7 @@ public sealed class WorkbookStore
     private readonly Dictionary<YearMonth, Entry<BankCashSheetData>> _bankCash = new();
     private readonly Dictionary<YearMonth, Entry<CurrencySheetData>> _currency = new();
     private readonly Dictionary<YearMonth, Entry<CardSheetData>> _card = new();
+    private readonly Dictionary<int, Entry<ZakatYearData>> _zakat = new();
 
     private sealed record Entry<T>(T Data, FileStamp Stamp);
 
@@ -96,16 +97,37 @@ public sealed class WorkbookStore
         }
     }
 
-    private T Load<T>(Dictionary<YearMonth, Entry<T>> cache, YearMonth month, Func<T> read, Func<T> missing, Func<string, T> failed)
+    /// <summary>
+    /// A year's zakat workbook.
+    /// </summary>
+    public ZakatYearData LoadZakat(int year) => Load(
+        _zakat, year, _excel.GetZakatFilePath(year),
+        () => _excel.LoadZakat(year),
+        () => ZakatYearData.Empty(year),
+        error => ZakatYearData.Empty(year, fileExists: true, error));
+
+    /// <summary>
+    /// Forget a year's zakat workbook so the next load re-reads it.
+    /// </summary>
+    public void InvalidateZakat(int year)
     {
-        var path = _excel.GetMonthFilePath(month);
+        lock (_lock)
+            _zakat.Remove(year);
+    }
+
+    private T Load<T>(Dictionary<YearMonth, Entry<T>> cache, YearMonth month, Func<T> read, Func<T> missing, Func<string, T> failed) =>
+        Load(cache, month, _excel.GetMonthFilePath(month), read, missing, failed);
+
+    private T Load<TKey, T>(Dictionary<TKey, Entry<T>> cache, TKey key, string path, Func<T> read, Func<T> missing, Func<string, T> failed)
+        where TKey : notnull
+    {
         var stamp = Stamp(path);
         if (stamp is null)
             return missing();
 
         lock (_lock)
         {
-            if (cache.TryGetValue(month, out var cached) && cached.Stamp == stamp)
+            if (cache.TryGetValue(key, out var cached) && cached.Stamp == stamp)
                 return cached.Data;
         }
 
@@ -125,7 +147,7 @@ public sealed class WorkbookStore
 
             // Stamp after reading: loading can itself save the file (to store new row IDs).
             if (Stamp(path) is { } after)
-                cache[month] = new Entry<T>(data, after);
+                cache[key] = new Entry<T>(data, after);
         }
 
         return data;

@@ -112,7 +112,7 @@ public partial class MainWindowViewModel : ViewModelBase
                 AppPage.BankCash => new BankCashViewModel(new BankCashService(_store), _settings, _dialogs, _launcher),
                 AppPage.Currency => new CurrencyViewModel(new BankCashService(_store), _launcher),
                 AppPage.CreditCard => new CreditCardViewModel(new CreditCardService(_store), _settings, _dialogs, _launcher),
-                AppPage.Zakat => new ZakatViewModel(),
+                AppPage.Zakat => new ZakatViewModel(new ZakatService(_store), _dialogs, _launcher),
                 AppPage.Settings => new SettingsViewModel(_settings, _dialogs, _excel, reminders: _reminders),
                 _ => throw new ArgumentOutOfRangeException(nameof(page), page, null),
             };

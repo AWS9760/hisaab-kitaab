@@ -10,6 +10,8 @@ namespace HisaabKitaab.Services.Excel;
 ///   Opening balances (typed in, or carried forward from last month)
 ///   A summary whose Excel formulas add up the log below and the Expenses sheet
 ///   A transaction log (withdrawals, deposits, income) with running balances
+///   To the right, a copy of the month's zakat given from the bank or in cash,
+///   rewritten on every save from the zakat workbooks (edited on the Zakat page)
 ///
 /// The formulas mean the sheet stays correct if expenses are edited in Excel.
 /// The app does its own arithmetic (see BalanceCalculator) and doesn't rely on them.
@@ -23,10 +25,14 @@ internal sealed class BankCashSheet
     private const string ManualSource = "You";
     private const string CarriedSource = "Carried forward";
     private const string CardRepaymentsLabel = "− Card repayments";
+    private const string ZakatLabel = "− Zakat given";
     private const string ClosingLabel = "Closing balance";
 
     // Log columns.
     private const int ColDate = 1, ColType = 2, ColAmount = 3, ColNote = 4, ColBank = 5, ColCash = 6, ColId = 7;
+
+    // Copy of zakat given this month, to the right of the log: Date, Amount, Paid from, Recipient.
+    private const int ZakatFirstCol = 9, ZakatLastCol = 12;
 
     // How far down the formulas look, in the log and in the Expenses sheet.
     private const int FormulaRows = 5000;
@@ -120,7 +126,28 @@ internal sealed class BankCashSheet
         {
             StoredOpeningBank = ReadOpening(Account.Bank),
             StoredOpeningCash = ReadOpening(Account.Cash),
+            StoredZakat = ReadZakatCopy(),
         };
+    }
+
+    /// <summary>
+    /// The zakat payments currently copied onto the sheet, to tell when the copy is out of date.
+    /// </summary>
+    private IReadOnlyList<ZakatCopyLine> ReadZakatCopy()
+    {
+        var lines = new List<ZakatCopyLine>();
+        var last = LastUsedRow(ZakatFirstCol, ZakatLastCol);
+        for (var row = FirstLogRow; row <= last; row++)
+        {
+            if (ExpensesSheet.TryReadDate(_ws.Cell(row, ZakatFirstCol), out var date)
+                && ExpensesSheet.TryReadAmount(_ws.Cell(row, ZakatFirstCol + 1), out var amount)
+                && AccountNames.TryParse(_ws.Cell(row, ZakatFirstCol + 2).GetString(), out var from))
+            {
+                lines.Add(new ZakatCopyLine(date, amount, from));
+            }
+        }
+
+        return lines;
     }
 
     // ---- Opening balances ---------------------------------------------------
@@ -157,7 +184,8 @@ internal sealed class BankCashSheet
         var row = FindInsertRow(entry.Date);
         if (row <= LastLogRow())
         {
-            _ws.Row(row).InsertRowsAbove(1);
+            // Only shift the log's own columns, not the zakat copy beside it.
+            _ws.Range(row, 1, row, ColId).InsertRowsAbove(1);
             _ws.Range(row, 1, row, ColId).Style = _ws.Style;
         }
 
@@ -180,7 +208,7 @@ internal sealed class BankCashSheet
         }
         else
         {
-            _ws.Row(row.Value).Delete();
+            DeleteLogRow(row.Value);
             Insert(entry);
         }
 
@@ -193,19 +221,29 @@ internal sealed class BankCashSheet
         if (row is null)
             return false;
 
-        _ws.Row(row.Value).Delete();
+        DeleteLogRow(row.Value);
         IsModified = true;
         return true;
     }
+
+    private void DeleteLogRow(int row) => _ws.Range(row, 1, row, ColId).Delete(XLShiftDeletedCells.ShiftCellsUp);
 
     // ---- Formulas -----------------------------------------------------------
 
     /// <summary>
     /// (Re)writes every formula so it points at the current log rows and the
-    /// Expenses sheet's current columns. Called before every save.
+    /// Expenses sheet's current columns, and refreshes the copy of the month's
+    /// zakat given. Called before every save.
     /// </summary>
-    public void RefreshFormulas(ExpensesSheet expenses, CreditCardSheet card)
+    /// <param name="zakatGiven">
+    /// This month's zakat given, or null to leave the copy as it is (the zakat
+    /// workbook couldn't be read).
+    /// </param>
+    public void RefreshFormulas(ExpensesSheet expenses, CreditCardSheet card, IReadOnlyList<ZakatEntry>? zakatGiven = null)
     {
+        if (zakatGiven is not null)
+            WriteZakatCopy(zakatGiven);
+
         var f = new FormulaParts(this, expenses, card, qualified: false);
         string LogSum(BankCashEntryType type, string? dateCriteria = null) => f.LogSum(type, dateCriteria);
         string ExpSum(string method, string? dateCriteria = null) => f.ExpSum(method, dateCriteria);
@@ -216,6 +254,7 @@ internal sealed class BankCashSheet
         var deposits = o + 4;
         var spent = o + 5;
         var repaid = o + 6;
+        var zakat = o + 7;
         var closing = ClosingRow;
 
         SetFormula(income, 2, LogSum(BankCashEntryType.BankIncome));
@@ -228,10 +267,12 @@ internal sealed class BankCashSheet
         SetFormula(spent, 3, "-" + ExpSum("Cash"));
         SetFormula(repaid, 2, "-" + card.RepaidFromFormula(Account.Bank));
         SetFormula(repaid, 3, "-" + card.RepaidFromFormula(Account.Cash));
-        SetFormula(closing, 2, $"B{o}+SUM(B{income}:B{repaid})");
-        SetFormula(closing, 3, $"C{o}+SUM(C{income}:C{repaid})");
+        SetFormula(zakat, 2, "-" + f.ZakatSum(Account.Bank));
+        SetFormula(zakat, 3, "-" + f.ZakatSum(Account.Cash));
+        SetFormula(closing, 2, $"B{o}+SUM(B{income}:B{zakat})");
+        SetFormula(closing, 3, $"C{o}+SUM(C{income}:C{zakat})");
 
-        // Running balances at the end of each logged day, expenses and card repayments included.
+        // Running balances at the end of each logged day, expenses, card repayments and zakat included.
         foreach (var row in LogRowNumbers())
         {
             if (IsBlankLogRow(row))
@@ -262,7 +303,46 @@ internal sealed class BankCashSheet
         return $"IF({dateCell}=\"\",{f.Sheet}$C${ClosingRow},{f.CashUpTo($"\"<=\"&{dateCell}")})";
     }
 
-    private int ClosingRow => _openingRow + 7;
+    private void WriteZakatCopy(IReadOnlyList<ZakatEntry> given)
+    {
+        var titleRow = _logHeaderRow - 1;
+        var title = _ws.Cell(titleRow, ZakatFirstCol);
+        title.Value = "Zakat given this month (copied from the Zakat workbook; change it on the Zakat page)";
+        title.Style.Font.Bold = true;
+        title.Style.Font.FontSize = 13;
+
+        string[] headers = { "Date", "Amount", "Paid from", "Recipient" };
+        for (var i = 0; i < headers.Length; i++)
+            _ws.Cell(_logHeaderRow, ZakatFirstCol + i).Value = headers[i];
+        StyleHeader(_ws.Range(_logHeaderRow, ZakatFirstCol, _logHeaderRow, ZakatLastCol));
+        double[] widths = { 3, 22, 16, 12, 26 };
+        for (var i = 0; i < widths.Length; i++)
+            _ws.Column(ZakatFirstCol - 1 + i).Width = widths[i];
+
+        var first = FirstLogRow;
+        var last = Math.Max(LastUsedRow(ZakatFirstCol, ZakatLastCol), first);
+        _ws.Range(first, ZakatFirstCol, last, ZakatLastCol).Clear(XLClearOptions.Contents);
+
+        var rows = given.Where(z => z.Type == ZakatEntryType.Given && z.PaidFrom is not null)
+            .OrderBy(z => z.Date).ToList();
+        for (var i = 0; i < rows.Count; i++)
+        {
+            var z = rows[i];
+            var row = first + i;
+            var date = _ws.Cell(row, ZakatFirstCol);
+            date.Value = z.Date.ToDateTime(TimeOnly.MinValue);
+            date.Style.DateFormat.Format = ExpensesSheet.DateFormat;
+            var amount = _ws.Cell(row, ZakatFirstCol + 1);
+            amount.Value = z.Amount;
+            amount.Style.NumberFormat.Format = ExpensesSheet.AmountFormat;
+            _ws.Cell(row, ZakatFirstCol + 2).Value = z.PaidFrom!.Value.ToDisplayName();
+            _ws.Cell(row, ZakatFirstCol + 3).Value = z.Recipient;
+        }
+
+        IsModified = true;
+    }
+
+    private int ClosingRow => _openingRow + 8;
 
     /// <summary>
     /// For other sheets: this sheet's closing balance cell for an account.
@@ -299,13 +379,22 @@ internal sealed class BankCashSheet
         public string ExpSum(string method, string? dateCriteria = null) =>
             $"SUMIFS({Exp(expenses.AmountColumn)},{Exp(expenses.PaymentColumn)},\"{method}\"{(dateCriteria is null ? "" : $",{Exp(expenses.DateColumn)},{dateCriteria}")})";
 
+        private string Zakat(int offset) =>
+            $"{Sheet}${Letter(ZakatFirstCol + offset)}${sheet.FirstLogRow}:${Letter(ZakatFirstCol + offset)}${sheet.FirstLogRow + FormulaRows}";
+
+        /// <summary>
+        /// Zakat given from <paramref name="account"/> (from the copy beside the log).
+        /// </summary>
+        public string ZakatSum(Account account, string? dateCriteria = null) =>
+            $"SUMIFS({Zakat(1)},{Zakat(2)},\"{account.ToDisplayName()}\"{(dateCriteria is null ? "" : $",{Zakat(0)},{dateCriteria}")})";
+
         /// <summary>
         /// Opening bank balance plus money in, minus money out, up to a date.
         /// </summary>
         public string BankUpTo(string dateCriteria) =>
             $"{Sheet}$B${sheet._openingRow}+{LogSum(BankCashEntryType.BankIncome, dateCriteria)}+{LogSum(BankCashEntryType.Deposit, dateCriteria)}" +
             $"-{LogSum(BankCashEntryType.Withdrawal, dateCriteria)}-{ExpSum("Bank", dateCriteria)}" +
-            $"-{card.RepaidFromFormula(Account.Bank, dateCriteria)}";
+            $"-{card.RepaidFromFormula(Account.Bank, dateCriteria)}-{ZakatSum(Account.Bank, dateCriteria)}";
 
         /// <summary>
         /// Opening cash plus cash in, minus cash out, up to a date.
@@ -313,7 +402,7 @@ internal sealed class BankCashSheet
         public string CashUpTo(string dateCriteria) =>
             $"{Sheet}$C${sheet._openingRow}+{LogSum(BankCashEntryType.CashIncome, dateCriteria)}+{LogSum(BankCashEntryType.Withdrawal, dateCriteria)}" +
             $"-{LogSum(BankCashEntryType.Deposit, dateCriteria)}-{ExpSum("Cash", dateCriteria)}" +
-            $"-{card.RepaidFromFormula(Account.Cash, dateCriteria)}";
+            $"-{card.RepaidFromFormula(Account.Cash, dateCriteria)}-{ZakatSum(Account.Cash, dateCriteria)}";
     }
 
     private void SetFormula(int row, int col, string formula)
@@ -356,7 +445,27 @@ internal sealed class BankCashSheet
         // sheet that happens to share a label is never changed.
         if (AddCardRepaymentRowIfMissing())
             _logHeaderRow++;
+        if (AddZakatRowIfMissing())
+            _logHeaderRow++;
 
+        return true;
+    }
+
+    /// <summary>
+    /// Sheets made before zakat existed go straight from "− Card repayments"
+    /// to "Closing balance"; slot the zakat row in between.
+    /// </summary>
+    /// <returns>True if the row was added (everything below moves down one).</returns>
+    private bool AddZakatRowIfMissing()
+    {
+        var oldClosing = _openingRow + 7;
+        if (!_ws.Cell(oldClosing, 1).GetString().Trim().Equals(ClosingLabel, StringComparison.OrdinalIgnoreCase))
+            return false;
+
+        _ws.Row(oldClosing).InsertRowsAbove(1);
+        _ws.Range(oldClosing, 1, oldClosing, 3).Style = _ws.Cell(oldClosing - 1, 1).Style;
+        _ws.Cell(oldClosing, 1).Value = ZakatLabel;
+        IsModified = true;
         return true;
     }
 
@@ -393,7 +502,7 @@ internal sealed class BankCashSheet
         _ws.Cell(4, 2).Value = "Bank";
         _ws.Cell(4, 3).Value = "Cash in hand";
 
-        string[] labels = { OpeningLabel, SourceLabel, "+ Income", "± Withdrawals", "± Deposits", "− Expenses paid", CardRepaymentsLabel, ClosingLabel };
+        string[] labels = { OpeningLabel, SourceLabel, "+ Income", "± Withdrawals", "± Deposits", "− Expenses paid", CardRepaymentsLabel, ZakatLabel, ClosingLabel };
         for (var i = 0; i < labels.Length; i++)
             _ws.Cell(_openingRow + i, 1).Value = labels[i];
 
@@ -441,8 +550,13 @@ internal sealed class BankCashSheet
 
     // ---- Rows ---------------------------------------------------------------
 
-    private int LastLogRow() =>
-        Math.Max(_ws.LastRowUsed(XLCellsUsedOptions.Contents)?.RowNumber() ?? _logHeaderRow, _logHeaderRow);
+    // The zakat copy sits beside the log, so only the log's own columns decide where it ends.
+    private int LastLogRow() => Math.Max(LastUsedRow(ColDate, ColNote), _logHeaderRow);
+
+    private int LastUsedRow(int firstCol, int lastCol) =>
+        Enumerable.Range(firstCol, lastCol - firstCol + 1)
+            .Select(c => _ws.Column(c).LastCellUsed(XLCellsUsedOptions.Contents)?.Address.RowNumber ?? 0)
+            .Max();
 
     private IEnumerable<int> LogRowNumbers()
     {

@@ -44,6 +44,13 @@ public class LedgerRowViewModel
             Title = "Card repayment";
             Detail = string.IsNullOrWhiteSpace(repayment.Note) ? $"Paid from {repayment.PaidFrom.ToDisplayName().ToLowerInvariant()}" : repayment.Note;
         }
+        else if (line.Zakat is { } zakat)
+        {
+            Icon = "🤲";
+            Color = "#7C3AED";
+            Title = "Zakat given";
+            Detail = string.Join(" · ", new[] { zakat.Recipient, zakat.Note }.Where(s => !string.IsNullOrWhiteSpace(s)));
+        }
         else
         {
             var expense = line.Expense!;
@@ -59,7 +66,7 @@ public class LedgerRowViewModel
     public BankCashEntry? Entry => Line.Entry;
 
     /// <summary>
-    /// Only logged entries can be edited here; expenses and card repayments have their own pages.
+    /// Only logged entries can be edited here; expenses, card repayments and zakat have their own pages.
     /// </summary>
     public bool IsEntry => Line.Entry is not null;
 

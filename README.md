@@ -11,8 +11,8 @@ look, light and dark themes), [ClosedXML](https://github.com/ClosedXML/ClosedXML
 and [LiveCharts2](https://livecharts.dev/).
 
 > **Status:** early development. Dashboard, Settings, Expenses (with search and filters), Bank &
-> Cash, Currency, Credit Card, budgets, recurring expenses and reminders work; the rest is being
-> built one stage at a time (see *Roadmap* below).
+> Cash, Currency, Credit Card, Zakat, budgets, recurring expenses and reminders work; backups and
+> file protection are next (see *Roadmap* below).
 
 ## Where your data lives
 
@@ -20,6 +20,7 @@ and [LiveCharts2](https://livecharts.dev/).
 |---|---|---|
 | Settings (family members, …) | `%APPDATA%\HisaabKitaab\settings.json` | `~/.config/HisaabKitaab/settings.json` |
 | Monthly workbooks | `Documents\Hisaab Kitaab\2026\Sept_2026.xlsx` | `~/Documents/Hisaab Kitaab/2026/Sept_2026.xlsx` |
+| Zakat (one workbook per zakat year) | `Documents\Hisaab Kitaab\2026\Zakat_2026.xlsx` | `~/Documents/Hisaab Kitaab/2026/Zakat_2026.xlsx` |
 
 If the settings file ever gets corrupted, the app starts with default settings
 and renames the bad file to `settings.corrupt-<date>.json` instead of deleting it.
@@ -93,6 +94,7 @@ re-enter expenses there:
 - Expenses paid by **Bank** come out of the bank balance.
 - **Credit card** expenses touch neither until you repay the card (from the
   bank or in cash) on the Credit Card screen.
+- **Zakat given** on the Zakat screen comes out of whichever it was paid from.
 
 Log the money that moves *between* or *into* them:
 
@@ -133,6 +135,39 @@ In the workbook, the *Credit Card* sheet has a formula-driven summary
 the due date for that month's bill), the repayment log, and alongside it a
 copy of the month's card expenses from the Expenses sheet (change those on the
 Expenses sheet; the copy is refreshed every time the app saves).
+
+## Zakat
+
+The **Zakat** screen keeps one **zakat year** at a time, and each year has its
+own workbook, `Zakat_2026.xlsx`, next to that year's monthly files.
+
+- **Pick the dates your zakat year runs over** (✎ next to the dates), for
+  example Ramadan to Ramadan. Type the start date, then choose the end date or
+  use **A full year** / **An Islamic year (354 days)**. A year must start in
+  the year it's named after, be at most a year long, and not overlap the years
+  either side. Until you save dates, the screen suggests the day after last
+  year's zakat year ended (or 1 January to 31 December) and says so.
+- Log zakat **Set aside** (worked out and put aside to give; moves no money)
+  and zakat **Given** (to whom, and whether it was paid from the bank or in
+  cash). Amounts accept sums and multiplication, e.g. `1200000*0.025`.
+- The screen shows what's been **taken out** (carried in plus set aside this
+  year), **given** (split into bank and cash) and what's **remaining** to give,
+  with the remaining amount after each entry.
+- Whatever's left **carries into the next zakat year**. Click ✎ next to
+  "Carried from …" to type your own figure instead (e.g. zakat still owed from
+  before you started using the app).
+- Zakat given comes off the bank balance or cash in hand on **Bank & Cash**
+  for the month it was given in, and shows up in that month's timeline.
+
+The zakat workbook has the dates, a summary (carried in, set aside, total
+taken out, given, remaining, given from bank and in cash) as Excel formulas,
+and the log. Each monthly workbook's *Bank & Cash* sheet has a **− Zakat
+given** row and, beside its transactions, a read-only copy of that month's
+zakat payments, refreshed whenever the app saves the month. Change zakat on
+the Zakat screen or in the zakat workbook, not in the copy. If a month's
+workbook is open in Excel when you log zakat, the app says so and updates that
+copy the next time it saves the month or starts; the app's own balances are
+right either way.
 
 ## Budgets
 
@@ -216,7 +251,11 @@ You can open and edit the monthly files yourself. The app is built to cope:
 - Opening balances that carry forward (bank, cash, card) are rewritten in
   later months' workbooks whenever an earlier month changes, and again each
   time the app starts, so every sheet shows current figures in Excel. A
-  workbook that's open in Excel at that moment is caught up next time.
+  workbook that's open in Excel at that moment is caught up next time. The
+  amount carried into each zakat year is kept up to date the same way.
+- Workbooks saved by this version (with zakat) can't be opened by older
+  versions of Hisaab Kitaab, which would misread the new Bank & Cash layout;
+  they ask you to update instead.
 
 ## Requirements
 
@@ -322,5 +361,5 @@ HisaabKitaab.Tests/  xUnit tests for services and view models
 8. ✅ Credit card, with automatic linking from expenses
 9. ✅ Dashboard with charts (and the Summary sheet)
 10. ✅ Budgets, recurring expenses, notifications
-11. Zakat (separate yearly file)
+11. ✅ Zakat (separate yearly file)
 12. Backups and file protection

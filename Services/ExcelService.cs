@@ -9,7 +9,8 @@ namespace HisaabKitaab.Services;
 /// app touches ClosedXML.
 ///
 /// Files live at <c>{DataFolder}/{year}/{Mon}_{year}.xlsx</c>, e.g.
-/// <c>Documents/Hisaab Kitaab/2026/Sept_2026.xlsx</c>.
+/// <c>Documents/Hisaab Kitaab/2026/Sept_2026.xlsx</c>. Each zakat year has
+/// its own workbook beside them, <c>{DataFolder}/{year}/Zakat_{year}.xlsx</c>.
 ///
 /// Every operation opens the file, changes only the rows it needs to and saves,
 /// so edits made directly in Excel between operations are preserved.
@@ -18,8 +19,10 @@ public class ExcelService
 {
     /// <summary>
     /// Bump when the workbook layout changes in a way older versions can't read.
+    /// 2: Bank &amp; Cash gained the "− Zakat given" row (older versions would
+    /// write their closing-balance formulas over it) and zakat workbooks exist.
     /// </summary>
-    public const int SchemaVersion = 1;
+    public const int SchemaVersion = 2;
 
     public const decimal MaxAmount = 1_000_000_000_000m;
 
@@ -392,18 +395,19 @@ public class ExcelService
 
     /// <summary>
     /// Re-saves a month's workbook so derived parts (formulas, the card's limit
-    /// and due date, the copy of card expenses) are brought up to date.
-    /// Does nothing for a month with no workbook.
+    /// and due date, the copies of card expenses and zakat given) are brought
+    /// up to date. A month with no workbook is left alone unless
+    /// <paramref name="createIfMissing"/>.
     /// </summary>
-    public void RefreshMonthWorkbook(YearMonth month)
+    public void RefreshMonthWorkbook(YearMonth month, bool createIfMissing = false)
     {
         lock (_gate)
         {
             var path = GetMonthFilePath(month);
-            if (!File.Exists(path))
+            if (!File.Exists(path) && !createIfMissing)
                 return;
 
-            using var workbook = Open(path);
+            using var workbook = File.Exists(path) ? Open(path) : CreateWorkbook(month);
             Save(workbook, path);
         }
     }
@@ -552,6 +556,242 @@ public class ExcelService
         };
     }
 
+    // ---- Zakat (one workbook per year) ------------------------------------------
+
+    /// <summary>
+    /// Raised after a zakat workbook has been saved, on the thread that saved it.
+    /// </summary>
+    public event Action<int>? ZakatSaved;
+
+    /// <summary>
+    /// <c>{DataFolder}/{year}/Zakat_{year}.xlsx</c>.
+    /// </summary>
+    public string GetZakatFilePath(int year) => Path.Combine(GetYearFolder(year), $"Zakat_{year:D4}.xlsx");
+
+    public bool ZakatFileExists(int year) => File.Exists(GetZakatFilePath(year));
+
+    public static bool TryParseZakatFileName(string fileName, out int year)
+    {
+        year = 0;
+        var name = Path.GetFileNameWithoutExtension(fileName);
+        return string.Equals(Path.GetExtension(fileName), ".xlsx", StringComparison.OrdinalIgnoreCase)
+               && name.StartsWith("Zakat_", StringComparison.OrdinalIgnoreCase)
+               && int.TryParse(name["Zakat_".Length..], out year)
+               && year is >= 1900 and <= 9999;
+    }
+
+    /// <summary>
+    /// Years that have a zakat workbook on disk, oldest first.
+    /// </summary>
+    public IReadOnlyList<int> GetExistingZakatYears()
+    {
+        if (!Directory.Exists(DataFolder))
+            return Array.Empty<int>();
+
+        var years = new List<int>();
+        foreach (var yearDir in Directory.EnumerateDirectories(DataFolder))
+        {
+            if (int.TryParse(Path.GetFileName(yearDir), out var year) && year is >= 1900 and <= 9999
+                && File.Exists(GetZakatFilePath(year)))
+            {
+                years.Add(year);
+            }
+        }
+
+        years.Sort();
+        return years;
+    }
+
+    /// <summary>
+    /// Reads a year's zakat workbook. A year with no file returns no entries and no period.
+    /// </summary>
+    public ZakatYearData LoadZakat(int year)
+    {
+        lock (_gate)
+        {
+            var path = GetZakatFilePath(year);
+            if (!File.Exists(path))
+                return ZakatYearData.Empty(year);
+
+            using var workbook = Open(path);
+            var sheet = ZakatSheet.Find(workbook, year);
+            if (sheet is null)
+                return ZakatYearData.Empty(year, fileExists: true);
+
+            var data = sheet.Read();
+            if (sheet.IsModified)
+            {
+                // New IDs for rows added by hand; see LoadExpenses.
+                try
+                {
+                    Save(workbook, path);
+                }
+                catch (WorkbookLockedException)
+                {
+                }
+            }
+
+            return data;
+        }
+    }
+
+    /// <summary>
+    /// Sets the dates a zakat year runs over, creating its workbook if needed.
+    /// </summary>
+    /// <exception cref="ArgumentException">
+    /// The dates aren't a valid zakat year for <paramref name="year"/>, or
+    /// entries already logged would fall outside them.
+    /// </exception>
+    public void SetZakatPeriod(int year, ZakatPeriod period)
+    {
+        lock (_gate)
+        {
+            if (period.Start.Year != year)
+                throw new ArgumentException($"The {year} zakat year must start in {year}.", nameof(period));
+            if (period.End < period.Start)
+                throw new ArgumentException("The zakat year must end on or after the day it starts.", nameof(period));
+            if (period.End > ZakatPeriod.LatestEnd(period.Start))
+                throw new ArgumentException("A zakat year can't be longer than a year.", nameof(period));
+
+            var path = GetZakatFilePath(year);
+            using var workbook = File.Exists(path) ? Open(path) : CreateZakatWorkbook(year, period);
+            var sheet = ZakatSheet.GetOrCreate(workbook, year, period);
+            var outside = sheet.Read().Entries.Count(e => !period.Contains(e.Date));
+            if (outside > 0)
+                throw new ArgumentException(
+                    $"{outside} {(outside == 1 ? "entry is" : "entries are")} dated outside {period}. Change or delete {(outside == 1 ? "it" : "them")} first.",
+                    nameof(period));
+
+            sheet.SetPeriod(period);
+            Save(workbook, path);
+        }
+    }
+
+    /// <summary>
+    /// Adds an entry to a year's zakat workbook, creating the workbook with
+    /// <paramref name="periodIfNew"/> if needed.
+    /// </summary>
+    public ZakatEntry AddZakatEntry(int year, ZakatEntry entry, ZakatPeriod periodIfNew)
+    {
+        lock (_gate)
+        {
+            entry = Normalize(entry);
+            if (entry.Id == Guid.Empty)
+                entry = entry with { Id = Guid.NewGuid() };
+
+            var path = GetZakatFilePath(year);
+            using var workbook = File.Exists(path) ? Open(path) : CreateZakatWorkbook(year, periodIfNew);
+            ZakatSheet.GetOrCreate(workbook, year, periodIfNew).Insert(entry);
+            Save(workbook, path);
+            return entry;
+        }
+    }
+
+    /// <exception cref="KeyNotFoundException">The entry is no longer in the file.</exception>
+    public ZakatEntry UpdateZakatEntry(int year, ZakatEntry entry)
+    {
+        lock (_gate)
+        {
+            entry = Normalize(entry);
+            if (entry.Id == Guid.Empty)
+                throw new ArgumentException("Entry has no ID.", nameof(entry));
+
+            var path = GetZakatFilePath(year);
+            using var workbook = OpenExisting(path);
+            if (!ZakatSheet.GetOrCreate(workbook, year, ZakatPeriod.CalendarYear(year)).Update(entry))
+                throw ZakatEntryNotFound(entry.Id, year);
+            Save(workbook, path);
+            return entry;
+        }
+    }
+
+    /// <exception cref="KeyNotFoundException">The entry is no longer in the file.</exception>
+    public void DeleteZakatEntry(int year, Guid id)
+    {
+        lock (_gate)
+        {
+            var path = GetZakatFilePath(year);
+            using var workbook = OpenExisting(path);
+            if (!ZakatSheet.GetOrCreate(workbook, year, ZakatPeriod.CalendarYear(year)).Delete(id))
+                throw ZakatEntryNotFound(id, year);
+            Save(workbook, path);
+        }
+    }
+
+    /// <summary>
+    /// Writes the amount carried from last year. <paramref name="isManual"/>
+    /// false marks it as carried forward. Creates the workbook with
+    /// <paramref name="periodIfNew"/> if needed.
+    /// </summary>
+    public void SetZakatCarried(int year, decimal value, bool isManual, ZakatPeriod periodIfNew)
+    {
+        lock (_gate)
+        {
+            if (Math.Abs(value) >= MaxAmount)
+                throw new ArgumentException("Amount is too large.", nameof(value));
+
+            var path = GetZakatFilePath(year);
+            using var workbook = File.Exists(path) ? Open(path) : CreateZakatWorkbook(year, periodIfNew);
+            ZakatSheet.GetOrCreate(workbook, year, periodIfNew)
+                .SetCarried(Math.Round(value, 2, MidpointRounding.AwayFromZero), isManual);
+            Save(workbook, path);
+        }
+    }
+
+    private static ZakatEntry Normalize(ZakatEntry entry)
+    {
+        if (entry.Amount <= 0)
+            throw new ArgumentException("Amount must be more than zero.", nameof(entry));
+        if (entry.Amount >= MaxAmount)
+            throw new ArgumentException("Amount is too large.", nameof(entry));
+        if (!Enum.IsDefined(entry.Type))
+            throw new ArgumentException("Choose Set aside or Given.", nameof(entry));
+
+        var given = entry.Type == ZakatEntryType.Given;
+        if (given && (entry.PaidFrom is not { } from || !Enum.IsDefined(from)))
+            throw new ArgumentException("Choose whether it was given from the bank or in cash.", nameof(entry));
+
+        return entry with
+        {
+            Amount = Math.Round(entry.Amount, 2, MidpointRounding.AwayFromZero),
+            PaidFrom = given ? entry.PaidFrom : null,
+            Recipient = given ? entry.Recipient?.Trim() ?? string.Empty : string.Empty,
+            Note = entry.Note?.Trim() ?? string.Empty,
+        };
+    }
+
+    private static KeyNotFoundException ZakatEntryNotFound(Guid id, int year) =>
+        new($"That entry is no longer in Zakat_{year}.xlsx. It may have been changed in Excel; reload and try again. (ID {id})");
+
+    /// <summary>
+    /// Zakat given during <paramref name="month"/>, from whichever zakat years
+    /// cover it, for the copy on its Bank &amp; Cash sheet. Null if a zakat
+    /// workbook couldn't be read (the copy is then left as it was).
+    /// </summary>
+    private IReadOnlyList<ZakatEntry>? ZakatGivenIn(YearMonth month)
+    {
+        var given = new List<ZakatEntry>();
+        foreach (var year in new[] { month.Year - 1, month.Year })
+        {
+            var path = GetZakatFilePath(year);
+            if (!File.Exists(path))
+                continue;
+
+            try
+            {
+                using var workbook = Open(path);
+                if (ZakatSheet.Find(workbook, year) is { } sheet)
+                    given.AddRange(sheet.Read().Entries.Where(e => e.Type == ZakatEntryType.Given && month.Contains(e.Date)));
+            }
+            catch (Exception ex) when (ex is IOException or InvalidDataException or NotSupportedException or UnauthorizedAccessException)
+            {
+                return null;
+            }
+        }
+
+        return given;
+    }
+
     private static KeyNotFoundException RepaymentNotFound(Guid id, YearMonth month) =>
         new($"That repayment is no longer in {month.FileName}. It may have been changed in Excel; reload and try again. (ID {id})");
 
@@ -662,6 +902,15 @@ public class ExcelService
         return workbook;
     }
 
+    private static XLWorkbook CreateZakatWorkbook(int year, ZakatPeriod period)
+    {
+        var workbook = new XLWorkbook();
+        workbook.Properties.Title = $"Hisaab Kitaab - Zakat {year}";
+        workbook.Properties.Author = "Hisaab Kitaab";
+        ZakatSheet.GetOrCreate(workbook, year, period);
+        return workbook;
+    }
+
     private static XLWorkbook OpenExisting(string path)
     {
         if (!File.Exists(path))
@@ -703,6 +952,9 @@ public class ExcelService
         WriteSchemaVersion(workbook);
         if (YearMonth.TryParseFileName(Path.GetFileName(path), out var month))
             CompleteMonthWorkbook(workbook, month);
+        var isZakat = TryParseZakatFileName(Path.GetFileName(path), out var zakatYear);
+        if (isZakat)
+            CompleteZakatWorkbook(workbook, zakatYear);
         Directory.CreateDirectory(Path.GetDirectoryName(path)!);
 
         // Save beside the real file, then swap it in, so a failed save never
@@ -733,6 +985,8 @@ public class ExcelService
 
         if (month != default)
             MonthSaved?.Invoke(month);
+        if (isZakat)
+            ZakatSaved?.Invoke(zakatYear);
     }
 
     private static void WriteTo(string tempPath, XLWorkbook workbook, bool evaluateFormulas)
@@ -758,12 +1012,21 @@ public class ExcelService
 
         card.SetCardDetails(_cardSettings?.Invoke());
         card.Refresh(expenses, monthExpenses);
-        bank.RefreshFormulas(expenses, card);
+        bank.RefreshFormulas(expenses, card, ZakatGivenIn(month));
         currency.RefreshFormulas(bank, card, expenses);
         SummarySheet.Rebuild(workbook, month, expenses, bank, card, monthExpenses,
             _budgets?.Invoke() ?? Array.Empty<ResolvedBudget>());
 
         // Excel recalculates everything when the file is opened.
+        workbook.FullCalculationOnLoad = true;
+    }
+
+    /// <summary>
+    /// Makes sure a zakat workbook has its sheet and up-to-date formulas.
+    /// </summary>
+    private static void CompleteZakatWorkbook(XLWorkbook workbook, int year)
+    {
+        ZakatSheet.GetOrCreate(workbook, year, ZakatPeriod.CalendarYear(year)).RefreshFormulas();
         workbook.FullCalculationOnLoad = true;
     }
 
