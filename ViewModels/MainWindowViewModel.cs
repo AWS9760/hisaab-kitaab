@@ -119,7 +119,8 @@ public partial class MainWindowViewModel : ViewModelBase
                 AppPage.Currency => new CurrencyViewModel(new BankCashService(_store), _launcher),
                 AppPage.CreditCard => new CreditCardViewModel(new CreditCardService(_store), _settings, _dialogs, _launcher),
                 AppPage.Zakat => new ZakatViewModel(new ZakatService(_store), _dialogs, _launcher),
-                AppPage.Settings => new SettingsViewModel(_settings, _dialogs, _excel, reminders: _reminders, backups: _backups, launcher: _launcher),
+                AppPage.Settings => new SettingsViewModel(_settings, _dialogs, _excel, reminders: _reminders, backups: _backups, launcher: _launcher,
+                    dataFolderChanged: () => _carryForward.StartSyncAll()),
                 _ => throw new ArgumentOutOfRangeException(nameof(page), page, null),
             };
             _pages[page] = vm;

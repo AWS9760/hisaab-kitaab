@@ -21,7 +21,8 @@ public partial class SettingsViewModel : PageViewModelBase
     private string? _errorMessage;
 
     public SettingsViewModel(SettingsService settings, IDialogService dialogs, ExcelService excel, TimeProvider? clock = null,
-        ReminderService? reminders = null, BackupService? backups = null, ILauncherService? launcher = null)
+        ReminderService? reminders = null, BackupService? backups = null, ILauncherService? launcher = null,
+        Action? dataFolderChanged = null)
     {
         _settings = settings;
         _dialogs = dialogs;
@@ -37,13 +38,15 @@ public partial class SettingsViewModel : PageViewModelBase
         Budgets = new BudgetSettingsViewModel(settings);
         Recurring = new RecurringSettingsViewModel(settings, dialogs, _clock, reminders is null ? null : reminders.CheckAsync);
         Notifications = new NotificationSettingsViewModel(settings, reminders);
-        Backups = new BackupSettingsViewModel(settings, backups ?? new BackupService(settings.BackupOptions), excel, dialogs,
-            launcher ?? new LauncherService());
+        launcher ??= new LauncherService();
+        Backups = new BackupSettingsViewModel(settings, backups ?? new BackupService(settings.BackupOptions), excel, dialogs, launcher);
+        Storage = new StorageSettingsViewModel(settings, excel, dialogs, launcher, dataFolderChanged);
+        Storage.FoldersChanged += (_, _) => Backups.Refresh();
     }
 
     public override string Title => "Settings";
 
-    public override string Description => "Family members, categories, budgets, recurring expenses, notifications and backups.";
+    public override string Description => "Family members, categories, budgets, recurring expenses, notifications, backups and where your data is kept.";
 
     public BudgetSettingsViewModel Budgets { get; }
 
@@ -53,7 +56,13 @@ public partial class SettingsViewModel : PageViewModelBase
 
     public BackupSettingsViewModel Backups { get; }
 
-    public override void OnNavigatedTo() => Backups.Refresh();
+    public StorageSettingsViewModel Storage { get; }
+
+    public override void OnNavigatedTo()
+    {
+        Backups.Refresh();
+        Storage.Refresh();
+    }
 
     public ObservableCollection<FamilyMemberItemViewModel> Members { get; } = new();
 
@@ -74,10 +83,6 @@ public partial class SettingsViewModel : PageViewModelBase
     public string? LoadWarning => _settings.LoadWarning;
 
     public bool HasLoadWarning => LoadWarning is not null;
-
-    public string SettingsFilePath => _settings.FilePath;
-
-    public string DataFolder => _excel.DataFolder;
 
     // Stale errors disappear as soon as the user starts correcting them.
     partial void OnNewMemberNameChanged(string value) => ErrorMessage = null;

@@ -22,6 +22,26 @@ public class DialogService : IDialogService
         return await dialog.ShowAsync() == ContentDialogResult.Primary;
     }
 
+    public async Task<DialogChoice> ChooseAsync(string title, string message, string primaryText, string? secondaryText, string cancelText = "Cancel")
+    {
+        var dialog = new ContentDialog
+        {
+            Title = title,
+            Content = message,
+            PrimaryButtonText = primaryText,
+            SecondaryButtonText = secondaryText ?? string.Empty,
+            CloseButtonText = cancelText,
+            DefaultButton = ContentDialogButton.Close,
+        };
+
+        return await dialog.ShowAsync() switch
+        {
+            ContentDialogResult.Primary => DialogChoice.Primary,
+            ContentDialogResult.Secondary => DialogChoice.Secondary,
+            _ => DialogChoice.Cancel,
+        };
+    }
+
     public async Task<string?> PickFolderAsync(string title)
     {
         if (Application.Current?.ApplicationLifetime is not IClassicDesktopStyleApplicationLifetime { MainWindow: { } window })

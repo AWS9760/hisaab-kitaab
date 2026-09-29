@@ -335,16 +335,7 @@
             <settings:NotificationsSection DataContext="{Binding Notifications}" />
             <settings:BackupsSection DataContext="{Binding Backups}" />
 
-            <StackPanel Spacing="4">
-                <SelectableTextBlock Opacity="0.6" FontSize="12" TextWrapping="Wrap">
-                    <Run Text="Monthly workbooks are stored in " />
-                    <Run Text="{Binding DataFolder}" />
-                </SelectableTextBlock>
-                <SelectableTextBlock Opacity="0.6" FontSize="12" TextWrapping="Wrap">
-                    <Run Text="Settings are saved automatically to " />
-                    <Run Text="{Binding SettingsFilePath}" />
-                </SelectableTextBlock>
-            </StackPanel>
+            <settings:StorageSection DataContext="{Binding Storage}" />
         </StackPanel>
     </ScrollViewer>
 </UserControl>

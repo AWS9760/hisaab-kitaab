@@ -1,0 +1,54 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:ui="using:FluentAvalonia.UI.Controls"
+             xmlns:vm="using:HisaabKitaab.ViewModels"
+             x:Class="HisaabKitaab.Views.Settings.StorageSection"
+             x:DataType="vm:StorageSettingsViewModel">
+
+    <!-- Uses the card style from SettingsView. -->
+    <Border Classes="card">
+        <StackPanel Spacing="14">
+            <StackPanel Spacing="2">
+                <TextBlock Text="Where your data is kept" Theme="{StaticResource SubtitleTextBlockStyle}" />
+                <TextBlock Text="When you change a folder, the app offers to move what's already there. A cloud-synced folder (OneDrive, Google Drive) also keeps a copy off this computer."
+                           TextWrapping="Wrap" Opacity="0.75" />
+            </StackPanel>
+
+            <Grid ColumnDefinitions="*,Auto">
+                <StackPanel VerticalAlignment="Center" Spacing="2">
+                    <TextBlock Classes="caption" Text="Workbooks (monthly and zakat)" />
+                    <SelectableTextBlock Text="{Binding DataFolder}" TextWrapping="Wrap" />
+                </StackPanel>
+                <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="8" VerticalAlignment="Center" Margin="12,0,0,0">
+                    <Button Content="Open" Command="{Binding OpenDataFolderCommand}" ToolTip.Tip="Open the workbook folder" />
+                    <Button Content="Change…" Command="{Binding ChangeDataFolderCommand}" ToolTip.Tip="Choose another folder for your workbooks" />
+                    <Button Content="Use default" Command="{Binding UseDefaultDataFolderCommand}" IsVisible="{Binding IsDataFolderCustom}" />
+                </StackPanel>
+            </Grid>
+
+            <Grid ColumnDefinitions="*,Auto">
+                <StackPanel VerticalAlignment="Center" Spacing="2">
+                    <TextBlock Classes="caption" Text="Settings (family members, categories, budgets…), saved automatically" />
+                    <SelectableTextBlock Text="{Binding SettingsFolder}" TextWrapping="Wrap" />
+                    <TextBlock Text="Set by HISAAB_KITAAB_HOME, so it can't be changed here." FontSize="12" Opacity="0.7"
+                               IsVisible="{Binding !CanMoveSettings}" />
+                </StackPanel>
+                <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="8" VerticalAlignment="Center" Margin="12,0,0,0">
+                    <Button Content="Open" Command="{Binding OpenSettingsFolderCommand}" ToolTip.Tip="Open the settings folder" />
+                    <Button Content="Change…" Command="{Binding ChangeSettingsFolderCommand}" IsVisible="{Binding CanMoveSettings}"
+                            ToolTip.Tip="Choose another folder for settings.json" />
+                    <Button Content="Use default" Command="{Binding UseDefaultSettingsFolderCommand}" IsVisible="{Binding IsSettingsFolderCustom}" />
+                </StackPanel>
+            </Grid>
+
+            <StackPanel Orientation="Horizontal" Spacing="8" IsVisible="{Binding IsBusy}">
+                <ui:ProgressRing IsIndeterminate="True" Width="16" Height="16" />
+                <TextBlock Text="Moving…" Opacity="0.8" />
+            </StackPanel>
+            <TextBlock Text="{Binding StatusMessage}" Foreground="{DynamicResource SystemFillColorSuccessBrush}"
+                       TextWrapping="Wrap" IsVisible="{Binding StatusMessage, Converter={x:Static ObjectConverters.IsNotNull}}" />
+            <ui:InfoBar IsOpen="{Binding HasError}" IsVisible="{Binding HasError}" IsClosable="False"
+                        Severity="Error" Message="{Binding ErrorMessage}" />
+        </StackPanel>
+    </Border>
+</UserControl>

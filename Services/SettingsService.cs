@@ -57,7 +57,26 @@ public class SettingsService
         }
     }
 
-    public string FilePath { get; }
+    /// <summary>
+    /// Where settings.json is. Changes when the user moves it (<see cref="MoveTo"/>).
+    /// </summary>
+    public string FilePath { get; private set; }
+
+    /// <summary>
+    /// The pointer file that remembers a moved settings folder (see
+    /// <see cref="SettingsLocation"/>), or null if settings can't be moved
+    /// (e.g. HISAAB_KITAAB_HOME keeps everything in one folder).
+    /// </summary>
+    public string? LocationPointer { get; init; }
+
+    /// <summary>
+    /// Where settings.json goes when it hasn't been moved.
+    /// </summary>
+    public string DefaultSettingsFilePath { get; init; } = DefaultFilePath;
+
+    public bool CanMoveSettings => LocationPointer is not null;
+
+    public bool IsSettingsFileMoved => !PathsEqual(FilePath, DefaultSettingsFilePath);
 
     /// <summary>
     /// Folder holding the monthly workbooks.
@@ -66,10 +85,92 @@ public class SettingsService
         string.IsNullOrWhiteSpace(_settings.DataFolder) ? _defaultDataFolder : _settings.DataFolder;
 
     /// <summary>
+    /// Where workbooks go unless the user has chosen a folder.
+    /// </summary>
+    public string DefaultDataFolderPath => _defaultDataFolder;
+
+    public bool IsDataFolderCustom => !string.IsNullOrWhiteSpace(_settings.DataFolder);
+
+    /// <summary>
     /// Set when <see cref="Load"/> found a settings file it couldn't read.
     /// The unreadable file is kept alongside under a new name so nothing is lost.
     /// </summary>
     public string? LoadWarning { get; private set; }
+
+    /// <summary>
+    /// Adds to <see cref="LoadWarning"/>, e.g. when the chosen settings folder wasn't found.
+    /// </summary>
+    public void AddLoadWarning(string warning) =>
+        LoadWarning = LoadWarning is null ? warning : $"{LoadWarning} {warning}";
+
+    /// <summary>
+    /// Records a new workbook folder (null for the default). The files
+    /// themselves are moved by <see cref="ExcelService.MoveDataFolder"/>.
+    /// </summary>
+    public void SetDataFolder(string? folder)
+    {
+        if (folder is not null && !Path.IsPathFullyQualified(folder))
+            throw new ArgumentException("Choose a full folder path.", nameof(folder));
+
+        lock (_sync)
+        {
+            var old = _settings.DataFolder;
+            _settings.DataFolder = folder is null || PathsEqual(folder, _defaultDataFolder) ? null : Path.GetFullPath(folder);
+            SaveOrRollBack(() => _settings.DataFolder = old);
+        }
+    }
+
+    /// <summary>
+    /// Moves settings.json to <paramref name="folder"/> (null for the default
+    /// folder) and remembers the new place for the next start. A settings.json
+    /// already there is kept, renamed "settings.replaced-…json".
+    /// </summary>
+    public void MoveTo(string? folder)
+    {
+        if (LocationPointer is not { } pointer)
+            throw new InvalidOperationException("Settings are kept with the workbooks (HISAAB_KITAAB_HOME), so they can't be moved.");
+        if (folder is not null && !Path.IsPathFullyQualified(folder))
+            throw new ArgumentException("Choose a full folder path.", nameof(folder));
+
+        var newPath = folder is null ? DefaultSettingsFilePath : Path.GetFullPath(Path.Combine(folder, "settings.json"));
+        var isDefault = PathsEqual(newPath, DefaultSettingsFilePath);
+
+        lock (_sync)
+        {
+            if (PathsEqual(newPath, FilePath))
+                return;
+
+            var oldPath = FilePath;
+            if (File.Exists(newPath))
+                File.Move(newPath, Path.Combine(Path.GetDirectoryName(newPath)!, $"settings.replaced-{DateTime.Now:yyyyMMdd-HHmmss}.json"));
+
+            FilePath = newPath;
+            try
+            {
+                Save();
+                SettingsLocation.Write(pointer, isDefault ? null : Path.GetDirectoryName(newPath));
+            }
+            catch
+            {
+                FilePath = oldPath;
+                throw;
+            }
+
+            // The old copy is no longer read; the new one has everything.
+            try
+            {
+                File.Delete(oldPath);
+            }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+            {
+            }
+        }
+    }
+
+    internal static bool PathsEqual(string a, string b) =>
+        string.Equals(Path.GetFullPath(a).TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar),
+            Path.GetFullPath(b).TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar),
+            OperatingSystem.IsWindows() ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal);
 
     public IReadOnlyList<FamilyMember> FamilyMembers => _settings.FamilyMembers;
 

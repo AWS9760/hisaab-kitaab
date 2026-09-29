@@ -21,10 +21,28 @@ public partial class App : Application
             // HISAAB_KITAAB_HOME keeps settings and workbooks together in one folder
             // (portable installs, or trying the app without touching real data).
             var home = Environment.GetEnvironmentVariable("HISAAB_KITAAB_HOME");
-            var settings = string.IsNullOrWhiteSpace(home)
-                ? new SettingsService(SettingsService.DefaultFilePath)
-                : new SettingsService(Path.Combine(home, "settings.json"), Path.Combine(home, "Workbooks"));
+            SettingsService settings;
+            string? locationWarning = null;
+            if (string.IsNullOrWhiteSpace(home))
+            {
+                // settings.json may have been moved; a pointer file in the default folder says where.
+                var pointer = SettingsLocation.DefaultPointerPath;
+                settings = new SettingsService(SettingsLocation.Resolve(pointer, SettingsService.DefaultFilePath, out locationWarning))
+                {
+                    LocationPointer = pointer,
+                };
+            }
+            else
+            {
+                settings = new SettingsService(Path.Combine(home, "settings.json"), Path.Combine(home, "Workbooks"))
+                {
+                    DefaultSettingsFilePath = Path.Combine(home, "settings.json"),
+                };
+            }
+
             settings.Load();
+            if (locationWarning is not null)
+                settings.AddLoadWarning(locationWarning);
 
             desktop.MainWindow = new MainWindow
             {

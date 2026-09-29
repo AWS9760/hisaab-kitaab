@@ -22,13 +22,32 @@ and [LiveCharts2](https://livecharts.dev/).
 | Monthly workbooks | `Documents\Hisaab Kitaab\2026\Sept_2026.xlsx` | `~/Documents/Hisaab Kitaab/2026/Sept_2026.xlsx` |
 | Zakat (one workbook per zakat year) | `Documents\Hisaab Kitaab\2026\Zakat_2026.xlsx` | `~/Documents/Hisaab Kitaab/2026/Zakat_2026.xlsx` |
 
+Those are the defaults. To keep either somewhere else (another drive, or a
+OneDrive / Google Drive folder), use **Settings → Where your data is kept**:
+
+- **Workbooks → Change…**: pick a folder. If you already have workbooks, the
+  app offers to **move** them there (with their backups, if the backup folder
+  is the default one) or to start empty. All workbooks move or none do, so
+  close them in Excel first. If the folder you pick already has Hisaab Kitaab
+  workbooks (for example a synced folder from another computer), the app
+  switches to those and leaves your current ones where they are.
+- **Settings → Change…**: moves `settings.json` to the folder you pick. The app
+  remembers the new place in a small `settings-location.txt` in the default
+  settings folder, so it can find your settings at the next start. If that
+  folder isn't available at startup (say, a drive that isn't plugged in), the
+  app uses the settings in the default folder and tells you so.
+- **Use default** puts either one back, moving the files again.
+
+Changes take effect straight away; no restart is needed.
+
 If the settings file ever gets corrupted, the app starts with default settings
 and renames the bad file to `settings.corrupt-<date>.json` instead of deleting it.
 
 **Keeping everything in one folder (portable mode / trying it out):** set the
 `HISAAB_KITAAB_HOME` environment variable to a folder, and the app keeps its
 settings and workbooks there instead (`settings.json` and `Workbooks/`),
-leaving your real data untouched.
+leaving your real data untouched. In this mode the settings folder can't be
+changed from the app (the workbook folder still can).
 
 ```powershell
 $env:HISAAB_KITAAB_HOME = "D:\HisaabTest"; dotnet run --project HisaabKitaab

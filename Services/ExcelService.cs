@@ -56,7 +56,174 @@ public class ExcelService
         _budgets = budgets;
     }
 
-    public string DataFolder { get; }
+    /// <summary>
+    /// The folder holding the year folders. Changed only by <see cref="MoveDataFolder"/>.
+    /// </summary>
+    public string DataFolder { get; private set; }
+
+    /// <summary>
+    /// Switches to <paramref name="newFolder"/>. With <paramref name="moveFiles"/>,
+    /// first moves every monthly and zakat workbook there (and the contents of
+    /// <paramref name="alsoMove"/>, a folder inside the data folder such as the
+    /// default backup folder). All workbooks move or none do: if any is open in
+    /// Excel or can't be moved, the ones already moved are put back.
+    /// Other files in the old folder are left alone.
+    /// </summary>
+    /// <exception cref="ArgumentException">The new folder is inside the current one, or already has one of the workbooks.</exception>
+    /// <exception cref="WorkbookLockedException">A workbook is open in another program.</exception>
+    public DataFolderMove MoveDataFolder(string newFolder, bool moveFiles, string? alsoMove = null)
+    {
+        lock (_gate)
+        {
+            newFolder = Path.GetFullPath(newFolder);
+            var oldFolder = DataFolder;
+            if (SettingsService.PathsEqual(newFolder, oldFolder))
+                return new DataFolderMove(0, 0, Array.Empty<string>());
+
+            var workbooks = new List<(string From, string To)>();
+            var extras = new List<(string From, string To)>();
+            var skipped = new List<string>();
+
+            if (moveFiles)
+            {
+                if (IsInside(newFolder, oldFolder))
+                    throw new ArgumentException("Choose a folder that isn't inside the current workbook folder.", nameof(newFolder));
+
+                foreach (var file in OurWorkbooks(oldFolder))
+                {
+                    var to = Path.Combine(newFolder, Path.GetRelativePath(oldFolder, file));
+                    if (File.Exists(to))
+                        throw new ArgumentException($"{newFolder} already has {Path.GetFileName(file)}. Choose another folder.", nameof(newFolder));
+                    workbooks.Add((file, to));
+                }
+
+                if (alsoMove is not null && Directory.Exists(alsoMove) && IsInside(alsoMove, oldFolder))
+                {
+                    foreach (var file in Directory.EnumerateFiles(alsoMove, "*", SearchOption.AllDirectories))
+                    {
+                        var to = Path.Combine(newFolder, Path.GetRelativePath(oldFolder, file));
+                        if (File.Exists(to))
+                            skipped.Add(file);
+                        else
+                            extras.Add((file, to));
+                    }
+                }
+
+                // Nothing moves if any workbook is open elsewhere.
+                foreach (var (from, _) in workbooks)
+                {
+                    try
+                    {
+                        using var check = new FileStream(from, FileMode.Open, FileAccess.ReadWrite, FileShare.None);
+                    }
+                    catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+                    {
+                        throw new WorkbookLockedException(from, ex);
+                    }
+                }
+
+                var moved = new List<(string From, string To)>();
+                try
+                {
+                    foreach (var (from, to) in workbooks)
+                    {
+                        Directory.CreateDirectory(Path.GetDirectoryName(to)!);
+                        File.Move(from, to);
+                        moved.Add((from, to));
+                    }
+                }
+                catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+                {
+                    foreach (var (from, to) in Enumerable.Reverse(moved))
+                    {
+                        try
+                        {
+                            File.Move(to, from);
+                        }
+                        catch (Exception undo) when (undo is IOException or UnauthorizedAccessException)
+                        {
+                            // Left in the new folder; it isn't lost.
+                        }
+                    }
+
+                    throw new IOException($"Couldn't move the workbooks to {newFolder} ({ex.Message}), so none were moved.", ex);
+                }
+
+                // Backups are extra copies: move what can be moved, leave the rest.
+                foreach (var (from, to) in extras)
+                {
+                    try
+                    {
+                        Directory.CreateDirectory(Path.GetDirectoryName(to)!);
+                        File.Move(from, to);
+                    }
+                    catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+                    {
+                        skipped.Add(from);
+                    }
+                }
+
+                RemoveEmptyFolders(oldFolder, workbooks.Concat(extras).Select(m => m.From));
+            }
+
+            Directory.CreateDirectory(newFolder);
+            DataFolder = newFolder;
+            var extrasMoved = extras.Count(e => !skipped.Contains(e.From));
+            return new DataFolderMove(workbooks.Count, extrasMoved, skipped);
+        }
+    }
+
+    // Monthly and zakat workbooks in their year folders; nothing else.
+    private static IEnumerable<string> OurWorkbooks(string folder)
+    {
+        if (!Directory.Exists(folder))
+            yield break;
+
+        foreach (var yearDir in Directory.EnumerateDirectories(folder))
+        {
+            if (!int.TryParse(Path.GetFileName(yearDir), out var year))
+                continue;
+
+            foreach (var file in Directory.EnumerateFiles(yearDir, "*.xlsx"))
+            {
+                var name = Path.GetFileName(file);
+                if ((YearMonth.TryParseFileName(name, out var month) && month.Year == year)
+                    || (TryParseZakatFileName(name, out var zakatYear) && zakatYear == year))
+                    yield return file;
+            }
+        }
+    }
+
+    // Deletes the folders that held the moved files (up to, not including, the old
+    // data folder) if the move left them empty. Other empty folders are left alone.
+    private static void RemoveEmptyFolders(string folder, IEnumerable<string> movedFiles)
+    {
+        var dirs = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var file in movedFiles)
+        {
+            for (var dir = Path.GetDirectoryName(file); dir is not null && IsInside(dir, folder); dir = Path.GetDirectoryName(dir))
+                dirs.Add(dir);
+        }
+
+        foreach (var dir in dirs.OrderByDescending(d => d.Length))
+        {
+            try
+            {
+                if (!Directory.EnumerateFileSystemEntries(dir).Any())
+                    Directory.Delete(dir);
+            }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+            {
+            }
+        }
+    }
+
+    private static bool IsInside(string path, string folder)
+    {
+        var comparison = OperatingSystem.IsWindows() ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal;
+        var parent = Path.GetFullPath(folder).TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar) + Path.DirectorySeparatorChar;
+        return Path.GetFullPath(path).StartsWith(parent, comparison);
+    }
 
     public string GetYearFolder(int year) => Path.Combine(DataFolder, year.ToString("D4"));
 
@@ -1123,3 +1290,9 @@ public class ExcelService
         }
     }
 }
+
+/// <summary>
+/// What <see cref="ExcelService.MoveDataFolder"/> did.
+/// </summary>
+/// <param name="Skipped">Backup files left in the old folder (a file of that name was already there, or it couldn't be moved).</param>
+public record DataFolderMove(int Workbooks, int OtherFiles, IReadOnlyList<string> Skipped);

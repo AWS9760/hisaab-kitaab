@@ -14,4 +14,17 @@ public interface IDialogService
     /// Lets the user choose a folder. Returns its full path, or null if they cancelled.
     /// </summary>
     Task<string?> PickFolderAsync(string title);
+
+    /// <summary>
+    /// Asks the user to pick between up to two actions or cancel.
+    /// Pass null for <paramref name="secondaryText"/> to offer just one.
+    /// </summary>
+    Task<DialogChoice> ChooseAsync(string title, string message, string primaryText, string? secondaryText, string cancelText = "Cancel");
+}
+
+public enum DialogChoice
+{
+    Cancel,
+    Primary,
+    Secondary,
 }
