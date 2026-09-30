@@ -413,13 +413,13 @@ HisaabKitaab.Tests/  xUnit tests for services and view models
 
 ---
 
-## 📄 License
+## License
 
 This project is licensed under the MIT License.
 
 ---
 
-## 👨‍💻 Author
+## Author
 
 **Abdul Wali**
 
