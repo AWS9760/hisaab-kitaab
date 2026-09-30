@@ -410,3 +410,21 @@ HisaabKitaab.Tests/  xUnit tests for services and view models
 10. ✅ Budgets, recurring expenses, notifications
 11. ✅ Zakat (separate yearly file)
 12. ✅ Backups (password protection was left out by choice)
+
+---
+
+## 📄 License
+
+This project is licensed under the MIT License.
+
+---
+
+## 👨‍💻 Author
+
+**Abdul Wali**
+
+Computer Science Student | Software Developer
+
+---
+
+⭐ *If you find this project useful, consider giving it a star!*
