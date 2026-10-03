@@ -134,38 +134,6 @@ $env:HISAAB_KITAAB_HOME = "D:\HisaabTest"; dotnet run
 HISAAB_KITAAB_HOME=~/hisaab-test dotnet run
 ```
 
-<<<<<<< HEAD
-1. ✅ Project scaffold and navigation shell
-2. ✅ Settings: family member management, saved to JSON
-3. ✅ ExcelService: monthly workbook creation, Expenses sheet read/write
-4. ✅ Expenses screen: add, edit, delete (plus categories in Settings)
-5. ✅ Search and filter
-6. ✅ Bank & Cash, with automatic deduction from expenses
-7. ✅ Currency denominations
-8. ✅ Credit card, with automatic linking from expenses
-9. ✅ Dashboard with charts (and the Summary sheet)
-10. ✅ Budgets, recurring expenses, notifications
-11. ✅ Zakat (separate yearly file)
-12. ✅ Backups (password protection was left out by choice)
-
----
-
-## License
-
-This project is licensed under the MIT License.
-
----
-
-## Author
-
-**Abdul Wali**
-
-Computer Science Student | Software Developer
-
----
-
-⭐ *If you find this project useful, consider giving it a star!*
-=======
 ## Where your data is kept
 
 | What | Default location (Windows) | Default location (Linux) |
@@ -209,4 +177,19 @@ docs/         User guide and screenshots
 Balances are never stored as data: the app works them out from your expenses
 and entries every time, and the workbooks hold Excel formulas that do the same
 sums, so both always agree.
->>>>>>> 6260421 (Fixed some bugs)
+
+## License
+
+This project is licensed under the MIT License.
+
+---
+
+## Author
+
+**Abdul Wali**
+
+Computer Science Student | Software Developer
+
+---
+
+⭐ *If you find this project useful, consider giving it a star!*
