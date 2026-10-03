@@ -291,6 +291,21 @@ public partial class DashboardViewModel : PageViewModelBase
     }
 
     /// <summary>
+    /// Gives the charts fresh series. The view calls this when a chart that was
+    /// hidden (no data) is shown again, since LiveCharts doesn't draw a chart
+    /// that got its data while hidden.
+    /// </summary>
+    public void RedrawCharts()
+    {
+        if (_data is not { } data)
+            return;
+
+        ShowCategories();
+        ShowTrend(data);
+        ShowMembers(data);
+    }
+
+    /// <summary>
     /// Reloads if already showing something, e.g. after recurring expenses were added.
     /// </summary>
     public void Refresh()
