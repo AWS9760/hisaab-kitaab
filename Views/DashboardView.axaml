@@ -117,7 +117,8 @@
                         <lvc:PieChart Series="{Binding CategorySeries}" LegendPosition="Hidden" TooltipPosition="Center"
                                       AutomationProperties.Name="Spending by category chart" />
                         <ScrollViewer Grid.Column="2" VerticalAlignment="Center">
-                            <ItemsControl ItemsSource="{Binding CategoryLegend}">
+                            <!-- Right margin keeps the scrollbar clear of the percentages. -->
+                            <ItemsControl ItemsSource="{Binding CategoryLegend}" Margin="0,0,16,0">
                                 <ItemsControl.ItemsPanel>
                                     <ItemsPanelTemplate>
                                         <StackPanel Spacing="6" />
